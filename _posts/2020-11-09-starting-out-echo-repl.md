@@ -94,7 +94,7 @@ It is always handy to have a REPL (Read-Eval-Print-Loop, a Lisp invention
 even when implementing the language the REPL evaluates. So our first Rust code will add one
 to `main.rs`:
 
-```Rust
+```rust
 use rustyline::error::ReadlineError;
 
 const PROMPT: &'static str = ">>> ";
