@@ -1,2 +1,6 @@
 /target
 **/*.rs.bk
+.bundle
+/_site
+/vendor
+
