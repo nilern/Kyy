@@ -15,7 +15,7 @@ be compromised for clarity or efficiency.
 <ol>
   {% for post in site.posts %}
     <li>
-      <a href="/{{ post.url }}">{{ post.title }}</a>
+      <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
     </li>
   {% endfor %}
 </ol>
