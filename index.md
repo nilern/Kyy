@@ -11,3 +11,12 @@
 An educational and efficient Python implementation. The goal is to teach
 advanced programming language and VM implementation, so compatibility may
 be compromised for clarity or efficiency.
+
+<ol>
+  {% for post in site.posts %}
+    <li>
+      <a href="/{{ post.url }}">{{ post.title }}</a>
+    </li>
+  {% endfor %}
+</ol>
+
