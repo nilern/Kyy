@@ -133,7 +133,7 @@ foo
 >>>
 ```
 
-Useless perhaps but as Jamie Zawinski put it in [Coders at Work](https://amzn.to/36jOdoj):
+Useless perhaps but as Jamie Zawinski put it in [Coders at Work](https://www.amazon.com/gp/product/1430219483/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=1430219483&linkId=df4feafb8ee088aa3c4f20601a61661e):
 
 > I find that getting something on the screen as soon as possible really helps focus the problem for me.
 > It helps me decide what to work on next. Because if you’re just looking at that big to-do list it’s like,
@@ -143,7 +143,7 @@ Useless perhaps but as Jamie Zawinski put it in [Coders at Work](https://amzn.to
 > tree structure, now maybe I should be emitting HTML or something along those lines. Or parsing the
 > headers in a more detailed way. You just look for the next thing to build on from there.
 
-And of course I have a huge to-do list for Kyy. I have [a lot of lists](https://amzn.to/35ckTRm),
+And of course I have a huge to-do list for Kyy. I have [a lot of lists](https://www.amazon.com/gp/product/0143126563/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=0143126563&linkId=dc0c2b4e0a932a14435eeb27f521688f),
 they keep me calm.
 
 From now on I will not bore you with `git commit` commands, you can
