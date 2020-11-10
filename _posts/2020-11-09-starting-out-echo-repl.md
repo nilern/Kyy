@@ -156,5 +156,7 @@ lexing AKA tokenization.
 
 ---
 
+[Back to the front page](/)
+
 As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 
