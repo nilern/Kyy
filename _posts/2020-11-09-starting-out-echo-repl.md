@@ -153,3 +153,8 @@ From now on I will not bore you with `git commit` commands, you can
 
 Next time we will be getting into some actual programming language technology:
 lexing AKA tokenization.
+
+---
+
+As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
+
