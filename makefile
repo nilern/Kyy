@@ -6,6 +6,10 @@ build:
 dev-build:
 	cargo build
 
+.PHONY: check
+check:
+	cargo check
+
 .PHONY: run
 run:
 	cargo run
