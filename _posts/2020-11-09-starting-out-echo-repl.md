@@ -156,7 +156,7 @@ lexing AKA tokenization.
 
 ---
 
-[Back to the front page](/)
+[Back to the front page](/Kyy/)
 
 As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 
