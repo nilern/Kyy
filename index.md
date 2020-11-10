@@ -12,6 +12,9 @@ An educational and efficient Python implementation. The goal is to teach
 advanced programming language and VM implementation, so compatibility may
 be compromised for clarity or efficiency.
 
+I document my progress and give background explanations in this blog,
+structured like a follow-along tutorial:
+
 <ol>
   {% for post in site.posts %}
     <li>
