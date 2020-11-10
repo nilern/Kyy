@@ -92,7 +92,7 @@ and now we are legit. Moving on.
 It is always handy to have a REPL (Read-Eval-Print-Loop, a Lisp invention
 [like so many other things we will encounter](https://en.wikipedia.org/wiki/Lisp_(programming_language)#Language_innovations)),
 even when implementing the language the REPL evaluates. So our first Rust code will add one
-to `main.rs`:
+to `src/main.rs`:
 
 ```rust
 use rustyline::error::ReadlineError;
@@ -143,8 +143,8 @@ Useless perhaps but as Jamie Zawinski put it in [Coders at Work](https://www.ama
 > tree structure, now maybe I should be emitting HTML or something along those lines. Or parsing the
 > headers in a more detailed way. You just look for the next thing to build on from there.
 
-And of course I have a huge to-do list for Kyy. I have [a lot of lists](https://www.amazon.com/gp/product/0143126563/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=0143126563&linkId=dc0c2b4e0a932a14435eeb27f521688f),
-they keep me calm.
+And of course I have a huge to-do list for Kyy. I use [GTD](https://www.amazon.com/gp/product/0143126563/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=0143126563&linkId=dc0c2b4e0a932a14435eeb27f521688f)
+so I have a lot of lists, they keep me calm.
 
 From now on I will not bore you with `git commit` commands, you can
 [see for yourself](https://github.com/nilern/Kyy/commits/master) if you must.
