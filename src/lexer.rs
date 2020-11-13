@@ -21,14 +21,14 @@ pub enum SyntaxError {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum TokenName {
+pub enum TokenType {
     Operator,
     Integer
 }
 
 #[derive(Debug)]
 pub struct Token<'a> {
-    pub name: TokenName,
+    pub name: TokenType,
     pub lexeme: &'a str
 }
 
@@ -78,7 +78,7 @@ impl<'a> KyyLexer<'a> {
         Located {value, offset: self.index, filename: self.filename.clone()}
     }
 
-    fn token(&self, name: TokenName, span: Range<usize>) -> Spanning<Token<'a>> {
+    fn token(&self, name: TokenType, span: Range<usize>) -> Spanning<Token<'a>> {
         Spanning {
             filename: self.filename.clone(),
             span: span.clone(),
@@ -104,7 +104,7 @@ impl<'a> Iterator for KyyLexer<'a> {
                         match self.peek() {
                             Some(c) if c.is_digit(10) => { self.pop(); },
                             Some(_) | None =>
-                                return Some (Ok(self.token(TokenName::Integer, start_index..self.index)))
+                                return Some (Ok(self.token(TokenType::Integer, start_index..self.index)))
                         }
                     }
                 },
@@ -114,7 +114,7 @@ impl<'a> Iterator for KyyLexer<'a> {
 
                     self.pop();
 
-                    return Some(Ok(self.token(TokenName::Operator, start_index..self.index)))
+                    return Some(Ok(self.token(TokenType::Operator, start_index..self.index)))
                 },
 
                 Some(c) => return Some(Err(self.here(SyntaxError::UnexpectedChar(c)))),
