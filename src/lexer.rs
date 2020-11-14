@@ -34,13 +34,6 @@ pub struct Token<'a> {
 
 type SyntaxResult<'a> = Result<Spanning<Token<'a>>, Located<SyntaxError>>;
 
-fn starts_operator(c: char) -> bool {
-    match c {
-        '+' | '-' | '*' | '/' => true,
-        _ => false
-    }
-}
-
 pub struct KyyLexer<'a> {
     chars: &'a str,
     index: usize,
