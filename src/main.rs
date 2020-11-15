@@ -1,4 +1,5 @@
 mod lexer;
+mod parser;
 
 use rustyline::error::ReadlineError;
 
@@ -11,8 +12,8 @@ fn main() {
         match repl.readline(PROMPT) {
             Ok(line) => {
                 let lexer = lexer::KyyLexer::new(&line, None);
-                match lexer.collect::<Result<Vec<_>, _>>() {
-                    Ok(tokens) => println!("{:#?}", tokens),
+                match parser::parse(lexer) {
+                    Ok(expr) => println!("{:#?}", expr),
                     Err(err) => println!("Syntax error: {:?}", err)
                 }
             },
