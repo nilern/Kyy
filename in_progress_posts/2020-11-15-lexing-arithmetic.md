@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "Lexing Arithmetic Expressions"
-date: 2020-11-13 19:35:00 +0200
+date: 2020-11-15 20:58:00 +0200
 categories: lexing parsing
 ---
 
@@ -18,8 +18,7 @@ expr = expr ('+' | '-') term
 term = term ('*' | '/') atom
      | atom
 
-atom = '(' expr ')'
-     | int
+atom = int
 
 int = digit int
     | digit
@@ -32,28 +31,35 @@ digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 ```
 
 ```rust
-Add(Int(1), Multiply(Int(2), Int(3)))
+Add(Const(1), Multiply(Const(2), Const(3)))
 ```
 
 ## Separating Tokenization Concern into Lexer
 
 ```
-expr = expr ADDITIVE_OP term
+expr = expr (PLUS | MINUS) term
      | term
 
-term = term MULTIPLICATIVE_OP atom
+term = term (STAR | SLASH) atom
      | atom
 
-atom = LPAREN expr RPAREN
-     | INT
+atom = INT
 ```
 
 ```
-LPAREN = '('
-RPAREN = ')'
-ADDITIVE_OP = '+' | '-'
-MULTIPLICATIVE_OP = '*' | '/'
+PLUS = '+'
+MINUS = '-'
+STAR = '*'
+SLASH = '/'
 INT = \d+
+```
+
+```
+1 + 2 * 3
+```
+
+```rust
+["1", "+", "2", "*", "3"]
 ```
 
 ## Tokens
@@ -61,16 +67,12 @@ INT = \d+
 `src/lexer.rs`:
 
 ```rust
-#[derive(Debug, Clone, Copy)]
-pub enum TokenType {
-    Operator,
-    Integer
-}
+#[derive(Debug, Clone)]
+pub enum Token {
+    Plus, Minus,
+    Star, Slash,
 
-#[derive(Debug)]
-pub struct Token<'a> {
-    pub name: TokenType,
-    pub lexeme: &'a str
+    Integer(isize)
 }
 ```
 
@@ -97,14 +99,14 @@ source locations to some `T`:
 use std::sync::Arc;
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Located<T> {
     pub value: T,
     pub filename: Option<Arc<String>>,
     pub offset: usize
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spanning<T> {
     pub value: T,
     pub filename: Option<Arc<String>>,
@@ -151,7 +153,7 @@ ample memory it is actually more efficient to read the compilation unit into a
 famed zero-copy parsing abilities of Rust!
 
 ```rust
-pub struct KyyLexer<'a> {
+struct LookaheadlessLexer<'a> {
     chars: &'a str,
     index: usize,
     filename: Option<Arc<String>>
@@ -159,26 +161,26 @@ pub struct KyyLexer<'a> {
 ```
 
 ```rust
-impl<'a> KyyLexer<'a> {
-    pub fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
-        KyyLexer {chars, index: 0, filename}
+impl<'a> LookaheadlessLexer<'a> {
+    fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
+        LookaheadlessLexer {chars, index: 0, filename}
     }
 
-    fn peek(&self) -> Option<char> {
+    fn peek_char(&self) -> Option<char> {
         self.chars.get(self.index..)
             .and_then(|cs| cs.chars().next())
     }
 
-    fn pop(&mut self) -> Option<char> {
+    fn pop_char(&mut self) -> Option<char> {
         self.chars.get(self.index..)
             .and_then(|cs| {
                 let mut cis = cs.char_indices();
                 match cis.next() {
                     Some((_, c)) => {
-                        match cis.next() {
-                            Some((c_len, _)) => self.index += c_len,
-                            None => self.index += 1
-                        }
+                        self.index += match cis.next() {
+                            Some((c_len, _)) => c_len,
+                            None => 1
+                        };
                         Some(c)
                     },
                     None => None
@@ -190,48 +192,65 @@ impl<'a> KyyLexer<'a> {
         Located {value, offset: self.index, filename: self.filename.clone()}
     }
 
-    fn token(&self, name: TokenType, span: Range<usize>) -> Spanning<Token<'a>> {
-        Spanning {
-            filename: self.filename.clone(),
-            span: span.clone(),
-            value: Token {name, lexeme: &self.chars[span]},
-        }
+    fn spanning<T>(&self, value: T, span: Range<usize>) -> Spanning<T> {
+        Spanning { value, span, filename: self.filename.clone() }
     }
 }
 ```
 
 ```rust
-impl<'a> Iterator for KyyLexer<'a> {
-    type Item = SyntaxResult<'a>;
+impl<'a> Iterator for LookaheadlessLexer<'a> {
+    type Item = LexResult;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match self.peek() {
-                Some(c) if c.is_whitespace() => { self.pop(); }, // skip \s (\s* with the outer loop)
+            match self.peek_char() {
+                Some('+') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Plus, start_index..self.index)));
+                },
+                Some('-') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Minus, start_index..self.index)));
+                },
+                Some('*') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Star, start_index..self.index)));
+                },
+                Some('/') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Slash, start_index..self.index)));
+                },
 
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
                     let start_index = self.index;
 
-                    self.pop(); // \d
-
+                    let mut n: isize = self.pop_char().unwrap() // \d
+                        .to_digit(10).unwrap()
+                        .try_into().unwrap();
                     loop { // \d*
-                        match self.peek() {
-                            Some(c) if c.is_digit(10) => { self.pop(); },
-                            Some(_) | None =>
-                                return Some (Ok(self.token(TokenType::Integer, start_index..self.index)))
+                        match self.peek_char() {
+                            Some(c) => match c.to_digit(10) {
+                                Some(d) => {
+                                    let _ = self.pop_char();
+                                    n = 10*n + isize::try_from(d).unwrap();
+                                },
+                                None => break
+                            },
+                            None => break
                         }
                     }
-                },
-                
-                Some('+') | Some('-') | Some('*') | Some('/') => { // [+\-*/]
-                    let start_index = self.index;
 
-                    self.pop();
-
-                    return Some(Ok(self.token(TokenType::Operator, start_index..self.index)))
+                    return Some (Ok(self.spanning(Token::Integer(n), start_index..self.index)))
                 },
 
-                Some(c) => return Some(Err(self.here(SyntaxError::UnexpectedChar(c)))),
+                Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
+
+                Some(c) => return Some(Err(self.here(Error::UnexpectedChar(c)))),
 
                 None => return None // EOF
             }
@@ -245,8 +264,6 @@ impl<'a> Iterator for KyyLexer<'a> {
 ```rust
 mod lexer;
 
-use lexer::{Located, SyntaxError, KyyLexer};
-
 use rustyline::error::ReadlineError;
 
 const PROMPT: &'static str = ">>> ";
@@ -257,8 +274,8 @@ fn main() {
     loop {
         match repl.readline(PROMPT) {
             Ok(line) => {
-                let lexer = KyyLexer::new(&line, None);
-                match lexer.collect::<Result<Vec<_>, Located<SyntaxError>>>() {
+                let lexer = lexer::KyyLexer::new(&line, None);
+                match lexer.collect::<Result<Vec<_>, _>>() {
                     Ok(tokens) => println!("{:#?}", tokens),
                     Err(err) => println!("Syntax error: {:?}", err)
                 }
@@ -270,3 +287,4 @@ fn main() {
     }
 }
 ```
+
