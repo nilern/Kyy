@@ -3,16 +3,16 @@ use super::lexer::{self, Token, KyyLexer, Spanning, Located};
 type Const = isize;
 
 #[derive(Debug)]
-pub enum Expr_ {
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>), // FIXME: __truediv__ vs. __floordiv__
+pub enum Expr {
+    Add(ExprRef, ExprRef),
+    Sub(ExprRef, ExprRef),
+    Mul(ExprRef, ExprRef),
+    Div(ExprRef, ExprRef), // FIXME: __truediv__ vs. __floordiv__
 
     Const(Const)
 }
 
-type Expr = Spanning<Expr_>;
+pub type ExprRef = Box<Spanning<Expr>>;
 
 // ---
 
@@ -54,11 +54,11 @@ fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Token> {
 // ---
 
 // ::= INTEGER
-fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
+fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
     match peek_some(tokens)? {
         Token::Integer(n) => { // INTEGER
             let tok = tokens.next().unwrap()?;
-            Ok(tokens.spanning(Expr_::Const(n), tok.span))
+            Ok(Box::new(tokens.spanning(Expr::Const(n), tok.span)))
         },
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     }
@@ -66,7 +66,7 @@ fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
 
 // ::= <multiplicative> (STAR | SLASH) <atom>
 //   | <atom>
-fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
+fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
     let mut l = atom(tokens)?; // <atom>
     loop { // ((STAR | SLASH) <atom>)*
         match peek(tokens)? {
@@ -74,13 +74,13 @@ fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
                 let _ = tokens.next();
                 let r = atom(tokens)?;
                 let span = l.span.start..r.span.end;
-                l = tokens.spanning(Expr_::Mul(Box::new(l), Box::new(r)), span);
+                l = Box::new(tokens.spanning(Expr::Mul(l, r), span));
             },
             Some(Token::Slash) => {
                 let _ = tokens.next();
                 let r = atom(tokens)?;
                 let span = l.span.start..r.span.end;
-                l = tokens.spanning(Expr_::Div(Box::new(l), Box::new(r)), span);
+                l = Box::new(tokens.spanning(Expr::Div(l, r), span));
             },
             _ => return Ok(l)
         }
@@ -89,7 +89,7 @@ fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
 
 // ::= <additive> (PLUS | MINUS) <multiplicative>
 //   | <multiplicative>
-fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
+fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
     let mut l = multiplicative(tokens)?; // <multiplicative>
     loop { // ((PLUS | MINUS) <multiplicative>)*
         match peek(tokens)? {
@@ -97,13 +97,13 @@ fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
                 let _ = tokens.next();
                 let r = multiplicative(tokens)?;
                 let span = l.span.start..r.span.end;
-                l = tokens.spanning(Expr_::Add(Box::new(l), Box::new(r)), span);
+                l = Box::new(tokens.spanning(Expr::Add(l, r), span));
             },
             Some(Token::Minus) => {
                 let _ = tokens.next();
                 let r = multiplicative(tokens)?;
                 let span = l.span.start..r.span.end;
-                l = tokens.spanning(Expr_::Sub(Box::new(l), Box::new(r)), span);
+                l = Box::new(tokens.spanning(Expr::Sub(l, r), span));
             },
             _ => return Ok(l)
         }
@@ -111,10 +111,10 @@ fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
 }
 
 // ::= <additive>
-fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> { additive(tokens) }
+fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> { additive(tokens) }
 
 // ::= <expr> EOF
-pub fn parse(mut lexer: KyyLexer) -> ParseResult<Expr> {
+pub fn parse(mut lexer: KyyLexer) -> ParseResult<ExprRef> {
     let expr = expr(&mut lexer)?;
     match peek(&mut lexer)? {
         None => Ok(expr),

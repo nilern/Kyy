@@ -1,7 +1,10 @@
 mod lexer;
 mod parser;
+mod eval;
 
 use rustyline::error::ReadlineError;
+
+use eval::eval;
 
 const PROMPT: &'static str = ">>> ";
 
@@ -13,7 +16,10 @@ fn main() {
             Ok(line) => {
                 let lexer = lexer::KyyLexer::new(&line, None);
                 match parser::parse(lexer) {
-                    Ok(expr) => println!("{:#?}", expr),
+                    Ok(expr) => {
+                        println!("{:#?}", expr);
+                        println!("=> {:?}", eval(expr));
+                    },
                     Err(err) => println!("Syntax error: {:?}", err)
                 }
             },
