@@ -1,65 +1,66 @@
+use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Located<T> {
     pub value: T,
     pub filename: Option<Arc<String>>,
     pub offset: usize
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spanning<T> {
     pub value: T,
     pub filename: Option<Arc<String>>,
     pub span: Range<usize>
 }
 
-#[derive(Debug)]
-pub enum SyntaxError {
+// ---
+
+#[derive(Debug, Clone)]
+pub enum Token {
+    Plus, Minus,
+    Star, Slash,
+
+    Integer(isize)
+}
+
+#[derive(Debug, Clone)]
+pub enum Error {
     UnexpectedChar(char)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum TokenType {
-    Operator,
-    Integer
-}
+pub type LexResult = Result<Spanning<Token>, Located<Error>>;
 
-#[derive(Debug)]
-pub struct Token<'a> {
-    pub name: TokenType,
-    pub lexeme: &'a str
-}
+// ---
 
-type SyntaxResult<'a> = Result<Spanning<Token<'a>>, Located<SyntaxError>>;
-
-pub struct KyyLexer<'a> {
+struct LookaheadlessLexer<'a> {
     chars: &'a str,
     index: usize,
     filename: Option<Arc<String>>
 }
 
-impl<'a> KyyLexer<'a> {
-    pub fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
-        KyyLexer {chars, index: 0, filename}
+impl<'a> LookaheadlessLexer<'a> {
+    fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
+        LookaheadlessLexer {chars, index: 0, filename}
     }
 
-    fn peek(&self) -> Option<char> {
+    fn peek_char(&self) -> Option<char> {
         self.chars.get(self.index..)
             .and_then(|cs| cs.chars().next())
     }
 
-    fn pop(&mut self) -> Option<char> {
+    fn pop_char(&mut self) -> Option<char> {
         self.chars.get(self.index..)
             .and_then(|cs| {
                 let mut cis = cs.char_indices();
                 match cis.next() {
                     Some((_, c)) => {
-                        match cis.next() {
-                            Some((c_len, _)) => self.index += c_len,
-                            None => self.index += 1
-                        }
+                        self.index += match cis.next() {
+                            Some((c_len, _)) => c_len,
+                            None => 1
+                        };
                         Some(c)
                     },
                     None => None
@@ -71,50 +72,119 @@ impl<'a> KyyLexer<'a> {
         Located {value, offset: self.index, filename: self.filename.clone()}
     }
 
-    fn token(&self, name: TokenType, span: Range<usize>) -> Spanning<Token<'a>> {
-        Spanning {
-            filename: self.filename.clone(),
-            span: span.clone(),
-            value: Token {name, lexeme: &self.chars[span]},
-        }
+    fn spanning<T>(&self, value: T, span: Range<usize>) -> Spanning<T> {
+        Spanning { value, span, filename: self.filename.clone() }
     }
 }
 
-impl<'a> Iterator for KyyLexer<'a> {
-    type Item = SyntaxResult<'a>;
+impl<'a> Iterator for LookaheadlessLexer<'a> {
+    type Item = LexResult;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match self.peek() {
-                Some(c) if c.is_whitespace() => { self.pop(); }, // skip \s (\s* with the outer loop)
+            match self.peek_char() {
+                Some('+') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Plus, start_index..self.index)));
+                },
+                Some('-') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Minus, start_index..self.index)));
+                },
+                Some('*') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Star, start_index..self.index)));
+                },
+                Some('/') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Slash, start_index..self.index)));
+                },
 
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
                     let start_index = self.index;
 
-                    self.pop(); // \d
-
+                    let mut n: isize = self.pop_char().unwrap() // \d
+                        .to_digit(10).unwrap()
+                        .try_into().unwrap();
                     loop { // \d*
-                        match self.peek() {
-                            Some(c) if c.is_digit(10) => { self.pop(); },
-                            Some(_) | None =>
-                                return Some (Ok(self.token(TokenType::Integer, start_index..self.index)))
+                        match self.peek_char() {
+                            Some(c) => match c.to_digit(10) {
+                                Some(d) => {
+                                    let _ = self.pop_char();
+                                    n = 10*n + isize::try_from(d).unwrap();
+                                },
+                                None => break
+                            },
+                            None => break
                         }
                     }
-                },
-                
-                Some('+') | Some('-') | Some('*') | Some('/') => { // [+\-*/]
-                    let start_index = self.index;
 
-                    self.pop();
-
-                    return Some(Ok(self.token(TokenType::Operator, start_index..self.index)))
+                    return Some (Ok(self.spanning(Token::Integer(n), start_index..self.index)))
                 },
 
-                Some(c) => return Some(Err(self.here(SyntaxError::UnexpectedChar(c)))),
+                Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
+
+                Some(c) => return Some(Err(self.here(Error::UnexpectedChar(c)))),
 
                 None => return None // EOF
             }
         }
+    }
+}
+
+// ---
+
+pub struct KyyLexer<'a> {
+    tokens: LookaheadlessLexer<'a>,
+    lookahead: Option<LexResult>
+}
+
+impl<'a> KyyLexer<'a> {
+    pub fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
+        KyyLexer {
+            tokens: LookaheadlessLexer::new(chars, filename),
+            lookahead: None
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<&<Self as Iterator>::Item> {
+        if self.lookahead.is_none() {
+            self.lookahead = self.tokens.next();
+        }
+        self.lookahead.as_ref()
+    }
+
+    pub fn here<T>(&self, value: T) -> Located<T> {
+        match self.lookahead {
+            Some(Ok(ref tok)) => Located {
+                value,
+                filename: tok.filename.clone(),
+                offset: tok.span.start
+            },
+            Some(Err(ref err)) => Located {
+                value,
+                filename: err.filename.clone(),
+                offset: err.offset
+            },
+            None => self.tokens.here(value)
+        }
+    }
+
+    pub fn spanning<T>(&self, value: T, span: Range<usize>) -> Spanning<T> {
+        self.tokens.spanning(value, span)
+    }
+}
+
+impl<'a> Iterator for KyyLexer<'a> {
+    type Item = LexResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lookahead.take()
+            .or_else(|| self.tokens.next())
     }
 }
 
