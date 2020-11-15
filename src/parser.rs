@@ -9,21 +9,28 @@ pub enum Expr {
     Mul(ExprRef, ExprRef),
     Div(ExprRef, ExprRef), // FIXME: __truediv__ vs. __floordiv__
 
+    Var(String),
     Const(Const)
 }
 
 pub type ExprRef = Box<Spanning<Expr>>;
 
+#[derive(Debug)]
+pub enum Stmt {
+    Assign(String, ExprRef),
+    Expr(ExprRef)
+}
+
 // ---
 
 #[derive(Debug)]
-pub enum Error {
-    UnexpectedToken(Token),
+pub enum Error<'a> {
+    UnexpectedToken(Token<'a>),
     Eof,
     Lex(lexer::Error)
 }
 
-impl From<Located<lexer::Error>> for Located<Error> {
+impl<'a> From<Located<lexer::Error>> for Located<Error<'a>> {
     fn from(err: Located<lexer::Error>) -> Self {
         Located {
             value: Error::Lex(err.value),
@@ -33,18 +40,18 @@ impl From<Located<lexer::Error>> for Located<Error> {
     }
 }
 
-type ParseResult<T> = Result<T, Located<Error>>;
+type ParseResult<'a, T> = Result<T, Located<Error<'a>>>;
 
 // ---
 
-fn peek<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Option<Token>> {
+fn peek<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Option<Token<'a>>> {
     match tokens.peek() {
         Some(res) => Ok(Some(res.clone()?.value)),
         None => Ok(None)
     }
 }
 
-fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Token> {
+fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Token<'a>> {
     match peek(tokens)? {
         Some(tok) => Ok(tok),
         None => Err(tokens.here(Error::Eof))
@@ -53,10 +60,15 @@ fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Token> {
 
 // ---
 
-// ::= INTEGER
-fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
+// ::= IDENTIFIER
+//   | INTEGER
+fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
     match peek_some(tokens)? {
-        Token::Integer(n) => { // INTEGER
+        Token::Identifier(chars) => {
+            let tok = tokens.next().unwrap()?;
+            Ok(Box::new(tokens.spanning(Expr::Var(String::from(chars)), tok.span)))
+        },
+        Token::Integer(n) => {
             let tok = tokens.next().unwrap()?;
             Ok(Box::new(tokens.spanning(Expr::Const(n), tok.span)))
         },
@@ -64,9 +76,9 @@ fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
     }
 }
 
-// ::= <multiplicative> (STAR | SLASH) <atom>
+// ::= <multiplicative> ('*' | '/') <atom>
 //   | <atom>
-fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
+fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
     let mut l = atom(tokens)?; // <atom>
     loop { // ((STAR | SLASH) <atom>)*
         match peek(tokens)? {
@@ -87,9 +99,9 @@ fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
     }
 }
 
-// ::= <additive> (PLUS | MINUS) <multiplicative>
+// ::= <additive> ('+' | '-') <multiplicative>
 //   | <multiplicative>
-fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
+fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
     let mut l = multiplicative(tokens)?; // <multiplicative>
     loop { // ((PLUS | MINUS) <multiplicative>)*
         match peek(tokens)? {
@@ -111,13 +123,33 @@ fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> {
 }
 
 // ::= <additive>
-fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<ExprRef> { additive(tokens) }
+fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> { additive(tokens) }
 
-// ::= <expr> EOF
-pub fn parse(mut lexer: KyyLexer) -> ParseResult<ExprRef> {
-    let expr = expr(&mut lexer)?;
+// ::= VAR '=' <expr>
+//   | <expr>
+fn stmt<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Stmt> {
+    match peek_some(tokens)? {
+        Token::Identifier(name) => { // IDENTIFIER
+            let id = tokens.next().unwrap()?;
+            match peek(tokens)? { // ('=' <expr>)?
+                Some(Token::Assign) => {
+                    let _ = tokens.next();
+                    let rvalue = expr(tokens)?;
+                    Ok(Stmt::Assign(String::from(name), rvalue))
+                },
+                _ => Ok(Stmt::Expr(Box::new(tokens.spanning(Expr::Var(String::from(name)), id.span))))
+            }
+        },
+        Token::Integer(_) => Ok(Stmt::Expr(expr(tokens)?)),
+        tok => Err(tokens.here(Error::UnexpectedToken(tok)))
+    }
+}
+
+// ::= <stmt> EOF
+pub fn parse<'a>(mut lexer: KyyLexer<'a>) -> ParseResult<'a, Stmt> {
+    let stmt = stmt(&mut lexer)?;
     match peek(&mut lexer)? {
-        None => Ok(expr),
+        None => Ok(stmt),
         Some(tok) => Err(lexer.here(Error::UnexpectedToken(tok)))
     }
 }

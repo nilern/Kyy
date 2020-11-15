@@ -19,10 +19,12 @@ pub struct Spanning<T> {
 // ---
 
 #[derive(Debug, Clone)]
-pub enum Token {
+pub enum Token<'a> {
+    Assign,
     Plus, Minus,
     Star, Slash,
 
+    Identifier(&'a str),
     Integer(isize)
 }
 
@@ -31,7 +33,7 @@ pub enum Error {
     UnexpectedChar(char)
 }
 
-pub type LexResult = Result<Spanning<Token>, Located<Error>>;
+pub type LexResult<'a> = Result<Spanning<Token<'a>>, Located<Error>>;
 
 // ---
 
@@ -78,11 +80,17 @@ impl<'a> LookaheadlessLexer<'a> {
 }
 
 impl<'a> Iterator for LookaheadlessLexer<'a> {
-    type Item = LexResult;
+    type Item = LexResult<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.peek_char() {
+                Some('=') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    return Some(Ok(self.spanning(Token::Assign, start_index..self.index)));
+                },
+
                 Some('+') => {
                     let start_index = self.index;
                     let _ = self.pop_char();
@@ -104,6 +112,22 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                     return Some(Ok(self.spanning(Token::Slash, start_index..self.index)));
                 },
 
+                Some(c) if c.is_alphabetic() => { // [:alpha]+ = [:alpha:] [:alpha:]*
+                    let start_index = self.index;
+
+                    let _ = self.pop_char(); // [:alpha:]
+                    loop { // [:alpha:]*
+                        match self.peek_char() {
+                            Some(c) if c.is_alphabetic() => { self.pop_char(); },
+                            _ => break
+                        }
+                    }
+
+                    let span = start_index..self.index;
+                    let name = &self.chars[span.clone()];
+                    return Some(Ok(self.spanning(Token::Identifier(name), span)));
+                },
+
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
                     let start_index = self.index;
 
@@ -123,7 +147,7 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                         }
                     }
 
-                    return Some (Ok(self.spanning(Token::Integer(n), start_index..self.index)))
+                    return Some(Ok(self.spanning(Token::Integer(n), start_index..self.index)));
                 },
 
                 Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
@@ -140,7 +164,7 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
 
 pub struct KyyLexer<'a> {
     tokens: LookaheadlessLexer<'a>,
-    lookahead: Option<LexResult>
+    lookahead: Option<LexResult<'a>>
 }
 
 impl<'a> KyyLexer<'a> {
@@ -180,7 +204,7 @@ impl<'a> KyyLexer<'a> {
 }
 
 impl<'a> Iterator for KyyLexer<'a> {
-    type Item = LexResult;
+    type Item = LexResult<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.lookahead.take()
