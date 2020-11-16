@@ -9,7 +9,15 @@ categories: lexing parsing
 
 ## Parsing
 
+Parsing derives structure from streams of characters, raw bytes or generally
+any "symbols of an alphabet". Usually the resulting structure is a tree but it
+can be a general graph, a simple integer or even a compiled program as happens
+with one-pass compilers.
+
 ## Simple Arithmetic Language
+
+As is customary in parsing and parser tooling tutorials we shall start by
+parsing simple arithmetic expressions, described by this grammar:
 
 ```
 expr = expr ('+' | '-') term
@@ -26,9 +34,17 @@ int = digit int
 digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 ```
 
+Or rather, that grammar with whitespace skipping added. (Incidentally, if you
+don't know how to read BNF you probably shouldn't be reading this blog just
+yet.)
+
+Basically the goal is to turn input like
+
 ```
 1 + 2 * 3
 ```
+
+into an abstract syntax tree (AST) format such as
 
 ```rust
 Add(Const(1), Multiply(Const(2), Const(3)))
@@ -36,15 +52,26 @@ Add(Const(1), Multiply(Const(2), Const(3)))
 
 ## Separating Tokenization Concern into Lexer
 
-```
-expr = expr (PLUS | MINUS) term
-     | term
+Character-level grammars look noisy. What is much worse is that popular parsing
+techniques with a small lookahead like LL(1) (e.g. handwritten recursive
+descent) and (LA)LR(1) (e.g. YACC or LALRPOP). So the parsing task is often
+split into two layers: tokenization AKA lexing, which splits the input into
+tokens (e.g. keywords, operators, constants, identifiers) and parsing proper,
+which parses the token stream to create more structured data like syntax trees.
 
-term = term (STAR | SLASH) atom
-     | atom
+Tokens don't usually contain nested structures so they can be described with
+regular grammars. Because a token contains much more information than a
+character the token stream can often be parsed with relatively weak parsing
+techniques. So the combination of regular expressions and e.g. LL(1) becomes
+considerably more powerful than either component.
 
-atom = INT
-```
+Being able to use a deterministic parsing algorithm like LL(k) or (LA)LR(k)
+also has the benefit of ensuring that the programming language grammar is
+deterministic. In fact we do not have any better way to avoid grammar
+ambiguities. Natural language is full of ambiguity, but an ambiguous
+programming language syntax would probably be unusable at best.
+
+So we can split our arithmetic grammar into a token grammar
 
 ```
 PLUS = '+'
@@ -54,17 +81,38 @@ SLASH = '/'
 INT = \d+
 ```
 
+and the main grammar that uses the token names:
+
+```
+exps = expr (PLUS | MINUS) term
+     | term
+
+term = term (STAR | SLASH) atom
+     | atom
+
+atom = INT
+```
+
+Unfortunately there is no established term that would unambiguously (hehe)
+refer to the parsing layer above the lexer. You see, tokenization is a form of
+parsing too; it turns a stream of characters such as
+
 ```
 1 + 2 * 3
 ```
+
+into a stream of tokens somewhat like
 
 ```rust
 ["1", "+", "2", "*", "3"]
 ```
 
-## Tokens
+It is also useful to view the lexer as a stream or iterator transformer like
+`map` and `filter`.
 
-`src/lexer.rs`:
+## Token Datatype
+
+Let's start by adding a `Token` enum into an empty file `src/lexer.rs`:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -75,6 +123,20 @@ pub enum Token {
     Integer(isize)
 }
 ```
+
+Various grammar-like specifications can be conveniently transliterated into
+algebraic datatypes like this. We have tokens for the arithmetic operators '+',
+'-', '*', '/' and integer literals. The `Integer` tokens carry the parsed
+integer. Using `isize` is quite sloppy; just like garbage collection, the
+implementation of arbitrary-precision arithmetic is postponed to maintain
+motivation.
+
+We could make the tokens homogeneous records of a token type tag and a string
+slice. We would still have a 'zero-copy' lexer with lightweight tokens since
+taking a `&str` causes no (heap) allocation. But the string slices would
+contain no useful data for the operators while failing to convey through the
+type system that the characters of an integer token are guaranteed to be
+parsable into an integer.
 
 ## Tracking Source Locations
 
@@ -126,7 +188,7 @@ among many located values so I put it in the **a**tomically
 **r**eference-**c**ounted `Arc` heap allocation. CPython uses reference
 counting as the primary system of automatic memory management. Its reference
 counting is not thread-safe, which is one major reason why CPython has to have
-the Global Interpreter Lock.  Using atomic instructions for incrementing and
+the Global Interpreter Lock. Using atomic instructions for incrementing and
 decrementing reference counts is slightly slower, so Rust also offers the `Rc`
 type for single-threaded reference counting (to enforce single-threaded use
 `Rc` does not implement `Send` or `Sync`). Reference counting also cannot
@@ -135,13 +197,10 @@ I plan to implement a tracing garbage collector for Kyy but debugging garbage
 collection before being able to even parse anything would be extremely
 demoralizing.
 
-I made the fields of these structs public because they are "Plain Old Data".
-Getters and setters are not "real OO" (whatever *that* means); usually they do
-not even provide encapsulation, only boilerplate. On the other hand I do find
-the lack of private field support in Python (and Javascript) extremely
-disturbing. (Yes, I know you can approximate private fields in these languages
-but basic encapsulation should not require design patterns or metaprogramming
-magic.)
+These are just simple records so I made the fields public. I anticipate no
+problems from this "lack of abstraction". Often objects or other abstract
+datatypes are a good idea. Many other times plain old data is best, especially
+when it is kept immutable. Getters and setters make a mockery of both.
 
 ## Tokenization
 
@@ -149,8 +208,7 @@ A lexer can be represented idiomatically in Rust by making it a function from
 an iterator of chars to an iterator of tokens. However it is easier to
 implement a lexer that only works on string slices `&str` and in these days of
 ample memory it is actually more efficient to read the compilation unit into a
-`String` up front. And this makes for a relatively easy demonstration of the
-famed zero-copy parsing abilities of Rust!
+`String` up front.
 
 ```rust
 struct LookaheadlessLexer<'a> {
@@ -261,6 +319,9 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
 
 ## Plugging the Lexer into Our REPL
 
+For manual testing and motivating stimulation we can make the REPL echo the
+tokens instead of just the input line itself:
+
 ```rust
 mod lexer;
 
@@ -287,4 +348,15 @@ fn main() {
     }
 }
 ```
+
+`collect`ing an `Iterator` of `Result`s into a `Result<Vec<_>, _>` is a nice
+trick (although not very discoverable). But this token printing will not last
+long; in the next post we will parse the token stream into an abstract syntax
+tree, a much more useful data structure.
+
+---
+
+[Back to the front page](/Kyy/)
+
+As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 
