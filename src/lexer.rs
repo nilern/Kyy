@@ -16,16 +16,23 @@ pub struct Spanning<T> {
     pub span: Range<usize>
 }
 
+impl<T> Spanning<T> {
+    pub fn here<U>(&self, value: U) -> Spanning<U> {
+        Spanning {value, filename: self.filename.clone(), span: self.span.clone() }
+    }
+}
+
 // ---
 
 #[derive(Debug, Clone)]
 pub enum Token<'a> {
     Assign,
-    Plus, Minus,
-    Star, Slash,
+    Plus, Minus, Star, Slash,
+    Lt, Le, Eq, Ne, Gt, Ge,
 
     Identifier(&'a str),
-    Integer(isize)
+    Integer(isize),
+    True, False
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +95,51 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                 Some('=') => {
                     let start_index = self.index;
                     let _ = self.pop_char();
-                    return Some(Ok(self.spanning(Token::Assign, start_index..self.index)));
+                    match self.peek_char() {
+                        Some('=') => {
+                            let _ = self.pop_char();
+                            return Some(Ok(self.spanning(Token::Eq, start_index..self.index)));
+                        },
+                        _ =>
+                            return Some(Ok(self.spanning(Token::Assign, start_index..self.index)))
+                    }
+                },
+
+                Some(c @ '!') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    match self.peek_char() {
+                        Some('=') => {
+                            let _ = self.pop_char();
+                            return Some(Ok(self.spanning(Token::Ne, start_index..self.index)));
+                        },
+                        _ => return Some(Err(self.here(Error::UnexpectedChar(c))))
+                    }
+                },
+
+                Some('<') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    match self.peek_char() {
+                        Some('=') => {
+                            let _ = self.pop_char();
+                            return Some(Ok(self.spanning(Token::Le, start_index..self.index)));
+                        },
+                        _ => 
+                            return Some(Ok(self.spanning(Token::Lt, start_index..self.index)))
+                    }
+                },
+                Some('>') => {
+                    let start_index = self.index;
+                    let _ = self.pop_char();
+                    match self.peek_char() {
+                        Some('=') => {
+                            let _ = self.pop_char();
+                            return Some(Ok(self.spanning(Token::Ge, start_index..self.index)));
+                        },
+                        _ => 
+                            return Some(Ok(self.spanning(Token::Gt, start_index..self.index)))
+                    }
                 },
 
                 Some('+') => {
@@ -125,7 +176,11 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
 
                     let span = start_index..self.index;
                     let name = &self.chars[span.clone()];
-                    return Some(Ok(self.spanning(Token::Identifier(name), span)));
+                    match name {
+                        "True" => return Some(Ok(self.spanning(Token::True, span))),
+                        "False" => return Some(Ok(self.spanning(Token::False, span))),
+                        _ => return Some(Ok(self.spanning(Token::Identifier(name), span)))
+                    }
                 },
 
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
