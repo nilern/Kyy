@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "Lexing Arithmetic Expressions"
-date: 2020-11-15 20:58:00 +0200
+date: 2020-11-18 23:15:00 +0200
 categories: lexing parsing
 ---
 
@@ -47,23 +47,26 @@ Basically the goal is to turn input like
 into an abstract syntax tree (AST) format such as
 
 ```rust
-Add(Const(1), Multiply(Const(2), Const(3)))
+Add(Const(1), Mul(Const(2), Const(3)))
 ```
 
 ## Separating Tokenization Concern into Lexer
 
 Character-level grammars look noisy. What is much worse is that popular parsing
 techniques with a small lookahead like LL(1) (e.g. handwritten recursive
-descent) and (LA)LR(1) (e.g. YACC or LALRPOP). So the parsing task is often
+descent) and (LA)LR(1) (e.g. YACC or
+[LALRPOP](http://lalrpop.github.io/lalrpop/)). So the parsing task is often
 split into two layers: tokenization AKA lexing, which splits the input into
 tokens (e.g. keywords, operators, constants, identifiers) and parsing proper,
 which parses the token stream to create more structured data like syntax trees.
 
 Tokens don't usually contain nested structures so they can be described with
-regular grammars. Because a token contains much more information than a
-character the token stream can often be parsed with relatively weak parsing
-techniques. So the combination of regular expressions and e.g. LL(1) becomes
-considerably more powerful than either component.
+regular grammars or regular expressions, which can be implemented very
+efficiently with stackless nondeterministic or even deterministic automata.
+Because a token contains much more information than a character the token
+stream can often be parsed with relatively weak parsing techniques. So the
+combination of regular expressions and e.g. LL(1) becomes considerably more
+powerful than either component.
 
 Being able to use a deterministic parsing algorithm like LL(k) or (LA)LR(k)
 also has the benefit of ensuring that the programming language grammar is
@@ -255,6 +258,31 @@ impl<'a> LookaheadlessLexer<'a> {
     }
 }
 ```
+
+As previously alluded to, regular expressions are sufficiently powerful to
+describe tokens. Lexer generators like Lex convert the token regexen into
+efficient (and undebuggable) deterministive finite automata that run in
+constant space and linear time. Unfortunately the regex types of most
+programming languages [use exponential backtracking
+algorithms](https://swtch.com/~rsc/regexp/regexp1.html) instead.
+
+That [site](https://swtch.com/~rsc/regexp/) is a great resource on regex
+implementation. Of course [hefty parsing
+tomes](https://www.amazon.com/gp/product/038720248X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=3d1dc256f7fc773c5233d9b855971b50)
+(affiliate link) cover regular language parsing but mostly focus on
+context-free grammars. Entry-level compiler textbooks like [the one I
+read](https://www.amazon.com/gp/product/052182060X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=052182060X&linkId=78364d1d3f1656185bed73974628dd3d)
+(affiliate link) spend a disproportionate amount of space on DFA construction
+while recommending that you just use a third-party lexer generator. Regular
+expression derivatives can also be used to both [directly parse with regular
+expressions](http://matt.might.net/articles/implementation-of-regular-expression-matching-in-scheme-with-derivatives/)
+(quite inefficiently) and to [construct
+DFA:s](https://www.ccs.neu.edu/home/turon/re-deriv.pdf).
+
+When lexing by hand it is most convenient to use a kind of nonrecursive [LL(m,
+k)](https://www.antlr.org/papers/parr.phd.thesis.pdf) technique. Backtracking
+would be both more complicated to implement and less efficient. Manual DFA
+construction is unrealistic and the code would be unreadable.
 
 ```rust
 impl<'a> Iterator for LookaheadlessLexer<'a> {
