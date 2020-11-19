@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "Lexing Arithmetic Expressions"
-date: 2020-11-18 23:15:00 +0200
+date: 2020-11-19 19:58:00 +0200
 categories: lexing parsing
 ---
 
@@ -284,6 +284,8 @@ k)](https://www.antlr.org/papers/parr.phd.thesis.pdf) technique. Backtracking
 would be both more complicated to implement and less efficient. Manual DFA
 construction is unrealistic and the code would be unreadable.
 
+To select from several alternatives we `match` a lookahead character:
+
 ```rust
 impl<'a> Iterator for LookaheadlessLexer<'a> {
     type Item = LexResult;
@@ -311,7 +313,13 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                     let _ = self.pop_char();
                     return Some(Ok(self.spanning(Token::Slash, start_index..self.index)));
                 },
+```
 
+Unsurprisingly loops (or tail recursion) can be used for repetition. Sometimes
+`*` can be elegantly converted into a `while` and `+` into `do ... while` loop
+but Rust does not have a `do ... while` (a.k.a `repeat ... until`) loop.
+
+```rust
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
                     let start_index = self.index;
 
@@ -333,7 +341,13 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
 
                     return Some (Ok(self.spanning(Token::Integer(n), start_index..self.index)))
                 },
+```
 
+Whitespace is just skipped and if we run out of characters when looking for the
+start of a token we are also out of tokens, so just propagate the `None`. Any
+other character is an error.
+
+```rust
                 Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
 
                 Some(c) => return Some(Err(self.here(Error::UnexpectedChar(c)))),
@@ -344,6 +358,10 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
     }
 }
 ```
+
+To support returning `Result`s from an iterator the `next` method needs to
+return an `Option<Result, ...`. I picked this idea up from LALRPOP's lexer
+interface but the `Iterator` trait basically forces this strategy.
 
 ## Plugging the Lexer into Our REPL
 
@@ -378,7 +396,8 @@ fn main() {
 ```
 
 `collect`ing an `Iterator` of `Result`s into a `Result<Vec<_>, _>` is a nice
-trick (although not very discoverable). But this token printing will not last
+trick (although not very discoverable; whereas in Haskell the more general
+pattern `traverse` is in constant use). But this token printing will not last
 long; in the next post we will parse the token stream into an abstract syntax
 tree, a much more useful data structure.
 
