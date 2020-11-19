@@ -47,7 +47,7 @@ pub type LexResult<'a> = Result<Spanning<Token<'a>>, Located<Error>>;
 struct LookaheadlessLexer<'a> {
     chars: &'a str,
     index: usize,
-    filename: Option<Arc<String>>
+    filename: Option<Arc<String>>,
 }
 
 impl<'a> LookaheadlessLexer<'a> {
@@ -90,116 +90,116 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
     type Item = LexResult<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.peek_char() {
-                Some('=') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    match self.peek_char() {
-                        Some('=') => {
-                            let _ = self.pop_char();
-                            return Some(Ok(self.spanning(Token::Eq, start_index..self.index)));
-                        },
-                        _ =>
-                            return Some(Ok(self.spanning(Token::Assign, start_index..self.index)))
-                    }
-                },
+        while self.peek_char().map_or(false, char::is_whitespace) { // skip \s*
+            let _ = self.pop_char();
+        }
 
-                Some(c @ '!') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    match self.peek_char() {
-                        Some('=') => {
-                            let _ = self.pop_char();
-                            return Some(Ok(self.spanning(Token::Ne, start_index..self.index)));
-                        },
-                        _ => return Some(Err(self.here(Error::UnexpectedChar(c))))
-                    }
-                },
-
-                Some('<') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    match self.peek_char() {
-                        Some('=') => {
-                            let _ = self.pop_char();
-                            return Some(Ok(self.spanning(Token::Le, start_index..self.index)));
-                        },
-                        _ => 
-                            return Some(Ok(self.spanning(Token::Lt, start_index..self.index)))
-                    }
-                },
-                Some('>') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    match self.peek_char() {
-                        Some('=') => {
-                            let _ = self.pop_char();
-                            return Some(Ok(self.spanning(Token::Ge, start_index..self.index)));
-                        },
-                        _ => 
-                            return Some(Ok(self.spanning(Token::Gt, start_index..self.index)))
-                    }
-                },
-
-                Some('+') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    return Some(Ok(self.spanning(Token::Plus, start_index..self.index)));
-                },
-                Some('-') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    return Some(Ok(self.spanning(Token::Minus, start_index..self.index)));
-                },
-                Some('*') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    return Some(Ok(self.spanning(Token::Star, start_index..self.index)));
-                },
-                Some('/') => {
-                    let start_index = self.index;
-                    let _ = self.pop_char();
-                    return Some(Ok(self.spanning(Token::Slash, start_index..self.index)));
-                },
-
-                Some(c) if c.is_alphabetic() => { // [:alpha]+ = [:alpha:] [:alpha:]*
-                    let start_index = self.index;
-
-                    let _ = self.pop_char(); // [:alpha:]
-                    while self.peek_char().map_or(false, char::is_alphabetic) { // [:alpha:]*
+        match self.peek_char() {
+            Some('=') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                match self.peek_char() {
+                    Some('=') => {
                         let _ = self.pop_char();
-                    }
+                        Some(Ok(self.spanning(Token::Eq, start_index..self.index)))
+                    },
+                    _ =>
+                        Some(Ok(self.spanning(Token::Assign, start_index..self.index)))
+                }
+            },
 
-                    let span = start_index..self.index;
-                    let name = &self.chars[span.clone()];
-                    match name {
-                        "True" => return Some(Ok(self.spanning(Token::True, span))),
-                        "False" => return Some(Ok(self.spanning(Token::False, span))),
-                        _ => return Some(Ok(self.spanning(Token::Identifier(name), span)))
-                    }
-                },
-
-                Some(c) if c.is_digit(10) => { // \d+ = \d \d*
-                    let start_index = self.index;
-
-                    let mut n: isize = self.pop_char().unwrap() // \d
-                        .to_digit(10).unwrap()
-                        .try_into().unwrap();
-                    while let Some(d) = self.peek_char().and_then(|c| c.to_digit(10)) { // \d*
+            Some(c @ '!') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                match self.peek_char() {
+                    Some('=') => {
                         let _ = self.pop_char();
-                        n = 10*n + isize::try_from(d).unwrap();
-                    }
+                        Some(Ok(self.spanning(Token::Ne, start_index..self.index)))
+                    },
+                    _ => Some(Err(self.here(Error::UnexpectedChar(c))))
+                }
+            },
 
-                    return Some(Ok(self.spanning(Token::Integer(n), start_index..self.index)));
-                },
+            Some('<') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                match self.peek_char() {
+                    Some('=') => {
+                        let _ = self.pop_char();
+                        Some(Ok(self.spanning(Token::Le, start_index..self.index)))
+                    },
+                    _ => 
+                        Some(Ok(self.spanning(Token::Lt, start_index..self.index)))
+                }
+            },
+            Some('>') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                match self.peek_char() {
+                    Some('=') => {
+                        let _ = self.pop_char();
+                        Some(Ok(self.spanning(Token::Ge, start_index..self.index)))
+                    },
+                    _ => 
+                        Some(Ok(self.spanning(Token::Gt, start_index..self.index)))
+                }
+            },
 
-                Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
+            Some('+') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Plus, start_index..self.index)))
+            },
+            Some('-') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Minus, start_index..self.index)))
+            },
+            Some('*') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Star, start_index..self.index)))
+            },
+            Some('/') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Slash, start_index..self.index)))
+            },
 
-                Some(c) => return Some(Err(self.here(Error::UnexpectedChar(c)))),
+            Some(c) if c.is_alphabetic() => { // [:alpha]+ = [:alpha:] [:alpha:]*
+                let start_index = self.index;
 
-                None => return None // EOF
-            }
+                let _ = self.pop_char(); // [:alpha:]
+                while self.peek_char().map_or(false, char::is_alphabetic) { // [:alpha:]*
+                    let _ = self.pop_char();
+                }
+
+                let span = start_index..self.index;
+                let name = &self.chars[span.clone()];
+                match name {
+                    "True" => Some(Ok(self.spanning(Token::True, span))),
+                    "False" => Some(Ok(self.spanning(Token::False, span))),
+                    _ => Some(Ok(self.spanning(Token::Identifier(name), span)))
+                }
+            },
+
+            Some(c) if c.is_digit(10) => { // \d+ = \d \d*
+                let start_index = self.index;
+
+                let mut n: isize = self.pop_char().unwrap() // \d
+                    .to_digit(10).unwrap()
+                    .try_into().unwrap();
+                while let Some(d) = self.peek_char().and_then(|c| c.to_digit(10)) { // \d*
+                    let _ = self.pop_char();
+                    n = 10*n + isize::try_from(d).unwrap();
+                }
+
+                Some(Ok(self.spanning(Token::Integer(n), start_index..self.index)))
+            },
+
+            Some(c) => Some(Err(self.here(Error::UnexpectedChar(c)))),
+
+            None => None // EOF
         }
     }
 }
