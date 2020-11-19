@@ -167,11 +167,8 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                     let start_index = self.index;
 
                     let _ = self.pop_char(); // [:alpha:]
-                    loop { // [:alpha:]*
-                        match self.peek_char() {
-                            Some(c) if c.is_alphabetic() => { self.pop_char(); },
-                            _ => break
-                        }
+                    while self.peek_char().map_or(false, char::is_alphabetic) { // [:alpha:]*
+                        let _ = self.pop_char();
                     }
 
                     let span = start_index..self.index;
@@ -189,17 +186,9 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                     let mut n: isize = self.pop_char().unwrap() // \d
                         .to_digit(10).unwrap()
                         .try_into().unwrap();
-                    loop { // \d*
-                        match self.peek_char() {
-                            Some(c) => match c.to_digit(10) {
-                                Some(d) => {
-                                    let _ = self.pop_char();
-                                    n = 10*n + isize::try_from(d).unwrap();
-                                },
-                                None => break
-                            },
-                            None => break
-                        }
+                    while let Some(d) = self.peek_char().and_then(|c| c.to_digit(10)) { // \d*
+                        let _ = self.pop_char();
+                        n = 10*n + isize::try_from(d).unwrap();
                     }
 
                     return Some(Ok(self.spanning(Token::Integer(n), start_index..self.index)));
