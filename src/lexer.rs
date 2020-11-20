@@ -24,8 +24,10 @@ impl<T> Spanning<T> {
 
 // ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token<'a> {
+    Newline, Indent, Dedent,
+
     Assign,
     Plus, Minus, Star, Slash,
     Lt, Le, Eq, Ne, Gt, Ge,
@@ -47,14 +49,10 @@ pub type LexResult<'a> = Result<Spanning<Token<'a>>, Located<Error>>;
 struct LookaheadlessLexer<'a> {
     chars: &'a str,
     index: usize,
-    filename: Option<Arc<String>>,
+    filename: Option<Arc<String>>
 }
 
 impl<'a> LookaheadlessLexer<'a> {
-    fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
-        LookaheadlessLexer {chars, index: 0, filename}
-    }
-
     fn peek_char(&self) -> Option<char> {
         self.chars.get(self.index..)
             .and_then(|cs| cs.chars().next())
@@ -90,11 +88,17 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
     type Item = LexResult<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.peek_char().map_or(false, char::is_whitespace) { // skip \s*
+        while self.peek_char().map_or(false, |c| c.is_whitespace() && c != '\r' && c != '\n') {
             let _ = self.pop_char();
         }
 
         match self.peek_char() {
+            Some('\n') => { // TODO: \r\n (Windows), \r (Ye Olde Mac), \\\n (escape)
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Newline, start_index..self.index)))
+            },
+
             Some('=') => {
                 let start_index = self.index;
                 let _ = self.pop_char();
@@ -206,15 +210,112 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
 
 // ---
 
-pub struct KyyLexer<'a> {
+enum State {
+    Startline,
+    Indenting(usize),
+    Dedenting(usize),
+    Intraline,
+    Eof
+}
+
+struct IndentingLexer<'a> {
     tokens: LookaheadlessLexer<'a>,
+    state: State,
+    indent_levels: Vec<usize>
+}
+
+impl<'a> Iterator for IndentingLexer<'a> {
+    type Item = LexResult<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use std::cmp::Ordering::*;
+        use State::*;
+
+        'next_state: loop {
+            match self.state {
+                Startline => {
+                    let mut indent = 0;
+                    loop { // TODO: \r\n?, \\
+                        match self.tokens.peek_char() {
+                            Some('\n') => {
+                                let _ = self.tokens.pop_char();
+                                indent = 0;
+                            },
+                            Some(c) if c.is_whitespace() => {
+                                let _ = self.tokens.pop_char();
+                                indent += 1;
+                            },
+                            Some(_) => break,
+                            None => {
+                                self.state = Eof;
+                                continue 'next_state;
+                            }
+                        }
+                    }
+
+                    self.state = match indent.cmp(self.indent_levels.last().unwrap_or(&0)) {
+                        Greater => Indenting(indent),
+                        Less => Dedenting(indent),
+                        Equal => Intraline
+                    };
+                },
+
+                Indenting(indent) =>
+                    match indent.cmp(self.indent_levels.last().unwrap_or(&0)) {
+                        Greater => {
+                            self.indent_levels.push(indent);
+                            let start_index = self.tokens.index - indent;
+                            return Some(Ok(self.tokens.spanning(Token::Indent, start_index..self.tokens.index)));
+                        },
+                        Equal => self.state = Intraline,
+                        Less => todo!("error")
+                    },
+
+                Dedenting(indent) =>
+                    match indent.cmp(self.indent_levels.last().unwrap_or(&0)) {
+                        Less => {
+                            let _ = self.indent_levels.pop();
+                            let start_index = self.tokens.index - indent;
+                            return Some(Ok(self.tokens.spanning(Token::Dedent, start_index..self.tokens.index)));
+                        },
+                        Equal => self.state = Intraline,
+                        Greater => todo!("error")
+                    },
+
+                Intraline =>
+                    match self.tokens.next() {
+                        Some(Ok(tok)) if tok.value == Token::Newline => {
+                            self.state = Startline;
+                            return Some(Ok(tok));
+                        },
+                        res @ Some(_) => return res,
+                        None => self.state = Eof
+                    },
+
+                Eof =>
+                    return self.indent_levels.pop().map(|_|
+                        Ok(self.tokens.spanning(Token::Dedent, self.tokens.index..self.tokens.index))
+                    )
+            }
+        }
+    }
+}
+
+// ---
+
+pub struct KyyLexer<'a> {
+    tokens: IndentingLexer<'a>,
     lookahead: Option<LexResult<'a>>
 }
 
 impl<'a> KyyLexer<'a> {
     pub fn new(chars: &'a str, filename: Option<Arc<String>>) -> Self {
         KyyLexer {
-            tokens: LookaheadlessLexer::new(chars, filename),
+            tokens: IndentingLexer {
+                tokens: LookaheadlessLexer {chars, index: 0, filename},
+                state: State::Startline,
+                indent_levels: Vec::new()
+            },
             lookahead: None
         }
     }
@@ -238,12 +339,12 @@ impl<'a> KyyLexer<'a> {
                 filename: err.filename.clone(),
                 offset: err.offset
             },
-            None => self.tokens.here(value)
+            None => self.tokens.tokens.here(value)
         }
     }
 
     pub fn spanning<T>(&self, value: T, span: Range<usize>) -> Spanning<T> {
-        self.tokens.spanning(value, span)
+        self.tokens.tokens.spanning(value, span)
     }
 }
 
