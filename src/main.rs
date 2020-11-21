@@ -6,18 +6,34 @@ use rustyline::error::ReadlineError;
 
 use eval::exec;
 
-const PROMPT: &'static str = ">>> ";
+fn read_lines(repl: &mut rustyline::Editor<()>) -> Result<String, ReadlineError> {
+    let mut input = repl.readline(">>> ")?;
+    input.push('\n');
+    if input.ends_with(":\n") { // TODO: Newline escape \
+        loop {
+            let line = repl.readline("... ")?;
+            if line.len() > 0 {
+                input.push_str(&line);
+                input.push('\n');
+            } else {
+                input.push('\n');
+                break;
+            }
+        }
+    }
+    Ok(input)
+}
 
 fn main() {
-    let mut repl = rustyline::Editor::<()>::new();
+    let mut repl = rustyline::Editor::new();
     let mut env = eval::new_global_env();
 
     loop {
-        match repl.readline(PROMPT) {
-            Ok(line) => {
-                let lexer = lexer::KyyLexer::new(&line, None);
+        match read_lines(&mut repl) {
+            Ok(lines) => {
+                let lexer = lexer::KyyLexer::new(&lines, None);
                 match parser::parse(lexer) {
-                    Ok(stmt) => {
+                    Ok(ref stmt) => {
                         println!("{:#?}", stmt);
                         println!("=> {:?}", exec(&mut env, stmt));
                     },
