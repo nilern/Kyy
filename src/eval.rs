@@ -10,19 +10,29 @@ pub enum Value {
     Bool(bool)
 }
 
+impl From<Value> for bool {
+    fn from(v: Value) -> bool {
+        match v {
+            Value::Int(0) => false,
+            Value::Int(_) => true,
+            Value::Bool(b) => b
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     TypeError(Vec<Value>),
     Unbound(Arc<String>)
 }
 
-type EvalResult = Result<Value, Spanning<Error>>;
+type EvalResult<T> = Result<T, Spanning<Error>>;
 
 type Env = HashMap<String, Value>;
 
 pub fn new_global_env() -> Env { HashMap::new() }
 
-pub fn eval(env: &Env, expr: &ExprRef) -> EvalResult {
+pub fn eval(env: &Env, expr: &ExprRef) -> EvalResult<Value> {
     use Value::*;
 
     match expr.value {
@@ -80,14 +90,29 @@ pub fn eval(env: &Env, expr: &ExprRef) -> EvalResult {
     }
 }
 
-pub fn exec(env: &mut Env, stmt: Stmt) -> EvalResult {
+fn exec_block(env: &mut Env, stmts: &[Stmt]) -> EvalResult<Option<Value>> {
+    let mut res = None;
+    for stmt in stmts {
+        res = exec(env, stmt)?;
+    }
+    Ok(res)
+}
+
+pub fn exec(env: &mut Env, stmt: &Stmt) -> EvalResult<Option<Value>> {
     match stmt {
+        Stmt::If {ref condition, ref conseq, ref alt} =>
+            if eval(env, condition)?.into() {
+                exec_block(env, conseq)
+            } else {
+                exec_block(env, alt)
+            },
+
         Stmt::Assign(ref var, ref rvalue) => {
-            let value = eval(env, rvalue)?;
-            env.insert(var.clone(), value);
-            Ok(value)
+            env.insert(var.clone(), eval(env, rvalue)?);
+            Ok(None)
         },
-        Stmt::Expr(ref expr) => eval(env, expr)
+
+        Stmt::Expr(ref expr) => eval(env, expr).map(Some)
     }
 }
 

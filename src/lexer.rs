@@ -28,6 +28,8 @@ impl<T> Spanning<T> {
 pub enum Token<'a> {
     Newline, Indent, Dedent,
 
+    If, Else, Colon,
+
     Assign,
     Plus, Minus, Star, Slash,
     Lt, Le, Eq, Ne, Gt, Ge,
@@ -37,9 +39,56 @@ pub enum Token<'a> {
     True, False
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenTag {
+    Newline, Indent, Dedent,
+
+    If, Else, Colon,
+
+    Assign,
+    Plus, Minus, Star, Slash,
+    Lt, Le, Eq, Ne, Gt, Ge,
+
+    Identifier,
+    Integer,
+    True, False
+}
+
+impl<'a> Token<'a> {
+    pub fn tag(&self) -> TokenTag {
+        match *self {
+            Token::Newline => TokenTag::Newline,
+            Token::Indent => TokenTag::Indent,
+            Token::Dedent => TokenTag::Dedent,
+
+            Token::If => TokenTag::If,
+            Token::Else => TokenTag::Else,
+            Token::Colon => TokenTag::Colon,
+
+            Token::Assign => TokenTag::Assign,
+            Token::Plus => TokenTag::Plus,
+            Token::Minus => TokenTag::Minus,
+            Token::Star => TokenTag::Star,
+            Token::Slash => TokenTag::Slash,
+            Token::Lt => TokenTag::Lt,
+            Token::Le => TokenTag::Le,
+            Token::Eq => TokenTag::Eq,
+            Token::Ne => TokenTag::Ne,
+            Token::Gt => TokenTag::Gt,
+            Token::Ge => TokenTag::Ge,
+
+            Token::Identifier(_) => TokenTag::Identifier,
+            Token::Integer(_) => TokenTag::Integer,
+            Token::True => TokenTag::True,
+            Token::False => TokenTag::False
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Error {
-    UnexpectedChar(char)
+    UnexpectedChar(char),
+    DedentDepth(usize)
 }
 
 pub type LexResult<'a> = Result<Spanning<Token<'a>>, Located<Error>>;
@@ -97,6 +146,12 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                 let start_index = self.index;
                 let _ = self.pop_char();
                 Some(Ok(self.spanning(Token::Newline, start_index..self.index)))
+            },
+
+            Some(':') => {
+                let start_index = self.index;
+                let _ = self.pop_char();
+                Some(Ok(self.spanning(Token::Colon, start_index..self.index)))
             },
 
             Some('=') => {
@@ -181,6 +236,8 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                 let span = start_index..self.index;
                 let name = &self.chars[span.clone()];
                 match name {
+                    "if" => Some(Ok(self.spanning(Token::If, span))),
+                    "else" => Some(Ok(self.spanning(Token::Else, span))),
                     "True" => Some(Ok(self.spanning(Token::True, span))),
                     "False" => Some(Ok(self.spanning(Token::False, span))),
                     _ => Some(Ok(self.spanning(Token::Identifier(name), span)))
@@ -268,7 +325,7 @@ impl<'a> Iterator for IndentingLexer<'a> {
                             return Some(Ok(self.tokens.spanning(Token::Indent, start_index..self.tokens.index)));
                         },
                         Equal => self.state = Intraline,
-                        Less => todo!("error")
+                        Less => unreachable!()
                     },
 
                 Dedenting(indent) =>
@@ -279,7 +336,7 @@ impl<'a> Iterator for IndentingLexer<'a> {
                             return Some(Ok(self.tokens.spanning(Token::Dedent, start_index..self.tokens.index)));
                         },
                         Equal => self.state = Intraline,
-                        Greater => todo!("error")
+                        Greater => return Some(Err(self.tokens.here(Error::DedentDepth(indent))))
                     },
 
                 Intraline =>

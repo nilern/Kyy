@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::lexer::{self, Token, KyyLexer, Spanning, Located};
+use super::lexer::{self, Token, TokenTag, KyyLexer, Spanning, Located};
 
 #[derive(Debug)]
 pub enum Const {
@@ -30,6 +30,12 @@ pub type ExprRef = Box<Spanning<Expr>>;
 
 #[derive(Debug)]
 pub enum Stmt {
+    If {
+        condition: ExprRef,
+        conseq: Vec<Stmt>,
+        alt: Vec<Stmt>
+    },
+
     Assign(String, ExprRef),
     Expr(ExprRef)
 }
@@ -39,6 +45,7 @@ pub enum Stmt {
 #[derive(Debug)]
 pub enum Error<'a> {
     UnexpectedToken(Token<'a>),
+    Expected(TokenTag, Token<'a>),
     Eof,
     Lex(lexer::Error)
 }
@@ -70,6 +77,17 @@ fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Token<'a>> {
         None => Err(tokens.here(Error::Eof))
     }
 }
+
+fn token<'a>(tokens: &mut KyyLexer<'a>, tag: TokenTag) -> ParseResult<'a, Token<'a>> {
+    let tok = peek_some(tokens)?;
+    if tok.tag() == tag {
+        let _ = tokens.next();
+        Ok(tok)
+    } else {
+        Err(tokens.here(Error::Expected(tag, tok)))
+    }
+}
+
 
 // ---
 
@@ -194,10 +212,49 @@ fn comparison<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
 // ::= <additive>
 fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> { comparison(tokens) }
 
-// ::= VAR '=' <expr>
-//   | <expr>
+// ::= NEWLINE INDENT <stmt>+ DEDENT
+fn block<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Vec<Stmt>> {
+    token(tokens, TokenTag::Newline)?;
+    token(tokens, TokenTag::Indent)?;
+
+    let mut stmts = Vec::new();
+    stmts.push(stmt(tokens)?); // <stmt>
+    // <stmt>*
+    while let Some(Token::If) | Some(Token::Identifier(_))
+        | Some(Token::Integer(_)) | Some(Token::True) | Some(Token::False)
+        = peek(tokens)?
+    {
+        stmts.push(stmt(tokens)?);
+    }
+
+    token(tokens, TokenTag::Dedent)?;
+
+    Ok(stmts)
+}
+
+fn else_block<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Vec<Stmt>> {
+    token(tokens, TokenTag::Else)?;
+    token(tokens, TokenTag::Colon)?;
+    block(tokens)
+}
+
+// ::= 'if' <expr> ':' <block> ('else' ':' <block>)?
+//   | VAR '=' <expr> NEWLINE
+//   | <expr> NEWLINE
 fn stmt<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Stmt> {
-    match peek_some(tokens)? {
+    let res = match peek_some(tokens)? {
+        Token::If => { // IF
+            let _ = tokens.next();
+            let condition = expr(tokens)?;
+            token(tokens, TokenTag::Colon)?;
+            let conseq = block(tokens)?;
+            let alt = match peek(tokens)? {
+                Some(Token::Else) => else_block(tokens)?,
+                _ => Vec::new()
+            };
+            return Ok(Stmt::If {condition, conseq, alt});
+        },
+
         Token::Identifier(name) => { // IDENTIFIER
             let id = tokens.next().unwrap()?;
             match peek(tokens)? { // ('=' <expr>)?
@@ -209,9 +266,13 @@ fn stmt<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Stmt> {
                 _ => Ok(Stmt::Expr(Box::new(tokens.spanning(Expr::Var(Arc::new(String::from(name))), id.span))))
             }
         },
+
         Token::Integer(_) | Token::True | Token::False => Ok(Stmt::Expr(expr(tokens)?)),
+
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
-    }
+    };
+    token(tokens, TokenTag::Newline)?;
+    res
 }
 
 // ::= <stmt> EOF
