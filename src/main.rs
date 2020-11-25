@@ -1,3 +1,4 @@
+mod gc;
 mod lexer;
 mod parser;
 mod eval;
