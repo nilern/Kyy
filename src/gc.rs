@@ -1,4 +1,7 @@
+use intrusive_collections::{intrusive_adapter, SinglyLinkedListLink, UnsafeRef, SinglyLinkedList};
+use intrusive_collections::singly_linked_list;
 use std::alloc::{Layout, alloc_zeroed};
+use std::convert::TryFrom;
 use std::mem::{transmute, size_of, align_of};
 use std::ops::{Deref, DerefMut, Add, AddAssign, Sub};
 use std::ptr::NonNull;
@@ -12,6 +15,10 @@ struct Granule(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct GSize(usize);
+
+impl From<usize> for GSize {
+    fn from(n: usize) -> GSize { GSize(n) }
+}
 
 impl Add for GSize {
     type Output = Self;
@@ -31,7 +38,7 @@ impl Sub for GSize {
 
 impl GSize {
     fn in_granules(size: usize) -> Option<GSize> {
-        Some(GSize(size.checked_add(size_of::<Granule>() - 1)? & !(size_of::<Granule>() - 1)))
+        Some(GSize(size.checked_add(size_of::<Granule>() - 1)? / size_of::<Granule>()))
     }
 
     fn of<T>() -> Option<GSize> { GSize::in_granules(size_of::<T>()) }
@@ -42,7 +49,7 @@ impl GSize {
 // ---
 
 #[derive(Debug, Eq)]
-struct Gc<T>(*const T);
+struct Gc<T>(NonNull<T>);
 
 impl<T> Clone for Gc<T> {
     fn clone(&self) -> Self { *self }
@@ -65,16 +72,58 @@ impl<T> DerefMut for Gc<T> {
 }
 
 impl<T> Gc<T> {
-    unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(raw) }
+    unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(NonNull::new_unchecked(raw)) }
 
-    unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0 as _ }
-}
+    unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
 
-impl Gc<Object> {
-    fn mark(mut self, heap: &mut Heap) -> Gc<Object> {
-        self.header.mark();
+    fn header<'a>(&'a self) -> &'a Header {
+        unsafe {
+            let ptr = self.0.as_ref() as *const T;
+            transmute((ptr as *const Header).offset(-1))
+        }
+    }
+
+    fn header_mut<'a>(&'a mut self) -> &'a mut Header {
+        unsafe {
+            let ptr = self.0.as_mut() as *mut T;
+            transmute((ptr as *mut Header).offset(-1))
+        }
+    }
+
+    fn is_marked(self) -> bool { self.header().is_marked() }
+
+    fn mark(mut self, heap: &mut Heap) -> Gc<T> {
+        self.header_mut().mark();
         self // non-moving GC ATM; returned for forwards compatibility
     }
+}
+
+// ---
+
+// Can be null and cannot be deref'd, unlike Gc<T>
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ORef(usize);
+
+impl ORef {
+    const NULL: ORef = ORef(0);
+
+    fn is_null(self) -> bool { self.0 == 0 }
+
+    unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
+
+    fn as_ptr(self) -> Option<NonNull<()>> { NonNull::new(self.0 as *mut ()) }
+}
+
+impl TryFrom<ORef> for Gc<()> {
+    type Error = ();
+
+    fn try_from(oref: ORef) -> Result<Gc<()>, ()> {
+        if !oref.is_null() { unsafe{ Ok(oref.unchecked_downcast()) } } else { Err(()) }
+    }
+}
+
+impl<T> From<Gc<T>> for ORef {
+    fn from(obj: Gc<T>) -> ORef { unsafe { ORef(transmute(obj.0.as_ref())) } }
 }
 
 // ---
@@ -85,21 +134,22 @@ const BYTES_SHIFT: usize = 1;
 const BYTES_BIT: usize = 1 << BYTES_SHIFT;
 const MARK_BIT: usize = 0b01;
 
-#[derive (Debug)]
-struct Header(usize);
+#[derive(Debug)]
+struct Heading(usize);
 
-impl Header {
-    fn new(granule_size: GSize, is_bytes: bool) -> Header {
-        Header(granule_size.0 << TAG_BITCOUNT | (is_bytes as usize) << BYTES_SHIFT)
+impl Heading {
+    fn new(gsize: GSize, is_bytes: bool) -> Heading {
+        Heading(gsize.0 << TAG_BITCOUNT | (is_bytes as usize) << BYTES_SHIFT)
     }
 
-    fn filler(granule_size: GSize) -> Header {
-        Header(granule_size.0 << TAG_BITCOUNT | BYTES_BIT)
+    fn filler(gsize: GSize) -> Heading {
+        Heading(gsize.0 << TAG_BITCOUNT | BYTES_BIT)
     }
 
-    fn granule_size(&self) -> GSize { GSize(self.0 >> TAG_BITCOUNT) }
+    // OPTIMIZE: Don't include Header size (requires alignment hole recognizability).
+    fn gsize(&self) -> GSize { GSize(self.0 >> TAG_BITCOUNT) }
 
-    fn set_granule_size(&mut self, size: GSize) {
+    fn set_gsize(&mut self, size: GSize) {
         self.0 = (size.0 << TAG_BITCOUNT) | (self.0 & TAG_MASK)
     }
 
@@ -115,37 +165,45 @@ impl Header {
 // ---
 
 #[repr(C)]
-struct Object {
-    header: Header,
-    class: Gc<Object>
+struct Header {
+    heading: Heading,
+    class: ORef
 }
 
-impl Object {
-    fn granule_size(&self) -> GSize { self.header.granule_size() }
+impl Header {
+    fn gsize(&self) -> GSize { self.heading.gsize() }
 
-    fn set_granule_size(&mut self, size: GSize) { self.header.set_granule_size(size) }
+    fn set_gsize(&mut self, size: GSize) { self.heading.set_gsize(size) }
 
-    fn is_marked(&self) -> bool { self.header.is_marked() }
+    fn is_bytes(&self) -> bool { self.heading.is_bytes() }
 
-    fn slots_mut(&mut self) -> Option<&mut [Gc<Object>]> {
-        if self.header.is_bytes() {
+    fn mark(&mut self) { self.heading.mark(); }
+
+    fn unmark(&mut self) { self.heading.unmark(); }
+
+    fn is_marked(&self) -> bool { self.heading.is_marked() }
+
+    fn slots_mut(&mut self) -> Option<&mut [ORef]> {
+        if self.heading.is_bytes() {
             None
         } else {
             Some(unsafe {
                 slice::from_raw_parts_mut(
-                    (self as *mut Object).add(1) as *mut Gc<Object>,
-                    self.header.granule_size().0
+                    (self as *mut Header).add(1) as *mut ORef,
+                    self.heading.gsize().0
                 )
             })
         }
     }
 
-    unsafe fn scan(&mut self, heap: &mut Heap, greys: &mut Vec<Gc<Object>>) {
+    unsafe fn scan(&mut self, heap: &mut Heap, greys: &mut Vec<Gc<()>>) {
         self.slots_mut().map(|slots|
-            for oref in slots {
-                if !oref.is_marked() {
-                    *oref = oref.mark(heap);
-                    greys.push(*oref);
+            for slot in slots {
+                if let Ok(obj) = Gc::try_from(*slot) {
+                    if !obj.is_marked() {
+                        *slot = ORef::from(obj.mark(heap));
+                        greys.push(obj);
+                    }
                 }
             }
         );
@@ -156,178 +214,219 @@ impl Object {
 
 #[repr(C)]
 struct FreeListNode {
-    header: Header,
-    rest: Option<NonNull<FreeListNode>>
+    heading: Heading,
+    link: SinglyLinkedListLink
 }
+
+intrusive_adapter!(FreeListAdapter = UnsafeRef<FreeListNode>: FreeListNode { link: SinglyLinkedListLink });
+
+type FreeList = SinglyLinkedList<FreeListAdapter>;
 
 impl FreeListNode {
-    fn granule_size(&self) -> GSize { self.header.granule_size() }
-}
-
-struct FreeList {
-    first: Option<NonNull<FreeListNode>>,
-    last: Option<NonNull<FreeListNode>>
-}
-
-impl FreeList {
-    fn new() -> FreeList { FreeList {first: None, last: None} }
-
-    fn singleton(link: NonNull<FreeListNode>) -> FreeList {
-        FreeList {first: Some(link), last: Some(link)}
-    }
-
-    fn push(&mut self, mut link: NonNull<FreeListNode>) {
-        unsafe {
-            link.as_mut().rest = None;
-            match self.last {
-                Some(mut prev) => {
-                    prev.as_mut().rest = Some(link);
-                    self.last = Some(link);
-                },
-                None => *self = FreeList::singleton(link)
-            }
-        }
-    }
+    fn gsize(&self) -> GSize { self.heading.gsize() }
 }
 
 // ---
 
 struct Heap {
-    start: *mut Object,
-    end: *mut Object,
+    start: *mut Header,
+    end: *mut Header,
     free: FreeList
 }
 
 impl Heap {
     fn new(max_size: usize) -> Option<Heap> {
         unsafe {
-            let max_granule_size = GSize(max_size / size_of::<Granule>());
-            let max_size = max_granule_size.in_bytes(); // rounded down, unlike `GSize::in_granules`
+            let max_gsize = GSize(max_size / size_of::<Granule>());
+            let max_size = max_gsize.in_bytes(); // rounded down, unlike `GSize::in_granules`
             let start = alloc_zeroed(Layout::from_size_align_unchecked(max_size, align_of::<Granule>()));
-            let end = start.add(max_size);
-            let mut pangaea = NonNull::new(start as *mut FreeListNode)?;
-            *(pangaea.as_mut()) = FreeListNode {
-                header: Header::filler(max_granule_size),
-                rest: None
-            };
-            Some(Heap {
-                start: start as *mut Object,
-                end: end as *mut Object,
-                free: FreeList {first: Some(pangaea), last: Some(pangaea)}
-            })
+            if !start.is_null() {
+                let end = start.add(max_size);
+                let pangaea = start as *mut FreeListNode;
+                *pangaea = FreeListNode {
+                    heading: Heading::filler(max_gsize),
+                    link: SinglyLinkedListLink::new()
+                };
+                let mut free = SinglyLinkedList::new(FreeListAdapter::new());
+                free.push_front(UnsafeRef::from_raw(pangaea));
+                Some(Heap {
+                    start: start as *mut Header,
+                    end: end as *mut Header,
+                    free: free
+                })
+            } else {
+                None
+            }
         }
     }
 
     // FIXME: alignment
-    unsafe fn alloc(&mut self, class: Gc<Object>, size: usize, is_bytes: bool) -> Option<NonNull<Object>> {
-        let granule_size = GSize::in_granules(size)?;
-        let mut prev: *mut FreeListNode = self.free.first?.as_mut() as _;
-        loop {
-            let mut curr: *mut FreeListNode = (*prev).rest?.as_mut() as _;
-            let curr_size = (*curr).granule_size();
-            if curr_size < granule_size {
-                prev = curr;
-            } else {
-                let slop: GSize = curr_size - granule_size;
+    unsafe fn alloc(&mut self, class: ORef, size: usize, align: usize, is_bytes: bool) -> Option<Gc<()>> {
+        let gsize = GSize::of::<Header>().unwrap() + GSize::in_granules(size)?;
+        let mut prev: singly_linked_list::CursorMut<FreeListAdapter> = self.free.cursor_mut();
 
-                if slop.0 == 0 {
-                    (*prev).rest = (*curr).rest;
-                } else if slop < GSize::of::<FreeListNode>()? {
-                    let hole_header: *mut Header = (curr as *const Granule).add(granule_size.0) as _;
-                    *hole_header = Header::filler(slop);
-                    (*prev).rest = (*curr).rest;
-                } else {
-                    let remainder: *mut FreeListNode = (curr as *const Granule).add(granule_size.0) as _;
-                    *remainder = FreeListNode {
-                        header: Header::filler(slop),
-                        rest: (*curr).rest
-                    };
-                    (*prev).rest = Some(NonNull::new_unchecked(remainder));
+        loop {
+            let curr_size = prev.peek_next().get()?.gsize();
+            if curr_size < gsize {
+                prev.move_next();
+            } else {
+                let obj: *mut Header = UnsafeRef::into_raw(prev.remove_next()?) as _;
+
+                let slop: GSize = curr_size - gsize;
+                if slop > GSize::from(0) {
+                    let hole: *mut Heading = (obj as *const Granule).add(gsize.0) as _;
+                    *hole = Heading::filler(slop);
+                    if slop >= GSize::of::<FreeListNode>().unwrap() {
+                        let remainder: *mut FreeListNode = hole as _;
+                        (*remainder).link = SinglyLinkedListLink::new();
+                        prev.insert_after(UnsafeRef::from_raw(remainder));
+                    }
                 }
 
-                let obj: *mut Object = curr as _;
-                *obj = Object {
-                    header: Header::new(granule_size, is_bytes),
-                    class: class
-                };
-                return Some(NonNull::new_unchecked(obj));
+                *obj = Header { heading: Heading::new(gsize, is_bytes), class };
+                return Some(Gc::from_raw(obj.add(1) as *mut ()));
             }
         }
     }
 
-    unsafe fn gc(&mut self, roots: &mut [Gc<Object>]) {
+    unsafe fn alloc_refs(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
+        self.alloc(class, GSize::from(len).in_bytes(), align_of::<Granule>(), false)
+    }
+
+    unsafe fn alloc_bytes(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
+        self.alloc(class, len, align_of::<u8>(), true)
+    }
+
+    unsafe fn gc(&mut self, roots: &mut [ORef]) {
         self.mark(roots);
         self.sweep();
     }
 
-    unsafe fn mark(&mut self, roots: &mut [Gc<Object>]) {
-        let mut greys: Vec<Gc<Object>> = Vec::new(); // Explicit mark stack to avoid stack overflow
+    unsafe fn mark(&mut self, roots: &mut [ORef]) {
+        let mut greys: Vec<Gc<()>> = Vec::new(); // Explicit mark stack to avoid stack overflow
 
         for root in roots {
-            if !root.is_marked() {
-                *root = root.mark(self);
-                greys.push(*root);
+            if let Ok(obj) = Gc::try_from(*root) {
+                if !obj.is_marked() {
+                    *root = ORef::from(obj.mark(self));
+                    greys.push(obj);
+                }
             }
         }
 
         while let Some(mut obj) = greys.pop() {
-            obj.scan(self, &mut greys);
+            obj.header_mut().scan(self, &mut greys);
         }
     }
 
     // FIXME: zeroing
     unsafe fn sweep(&mut self) {
-        self.free = FreeList::new();
+        self.free.fast_clear();
+        let mut free = self.free.cursor_mut();
 
-        let mut objs = self.headers();
-        while let Some(mut header_ptr) = objs.next() {
-            let header: &mut Header = header_ptr.as_mut();
-            if header.is_marked() {
-                header.unmark();
+        let mut objs = Headings {scan: self.start as _, end: self.end as _};
+        while let Some(mut heading) = objs.next() {
+            let heading: &mut Heading = heading.as_mut();
+            if heading.is_marked() {
+                heading.unmark();
             } else {
-                let mut granule_size = header.granule_size();
+                let mut gsize = heading.gsize();
                 while let Some(mut next) = objs.next() {
-                    let next: &mut Header = next.as_mut();
+                    let next: &mut Heading = next.as_mut();
                     if next.is_marked() {
                         next.unmark();
                         break;
                     } else {
-                        granule_size += (*next).granule_size();
+                        gsize += (*next).gsize();
                     }
                 }
 
-                header.set_granule_size(granule_size);
-                if granule_size > GSize::of::<Object>().unwrap() {
-                    let link: *mut FreeListNode = transmute(header);
-                    self.free.push(NonNull::new_unchecked(link));
+                heading.set_gsize(gsize);
+
+                if gsize >= GSize::of::<Header>().unwrap() {
+                    let node: *mut FreeListNode = transmute(heading);
+                    (*node).link = SinglyLinkedListLink::new();
+                    free.insert_after(UnsafeRef::from_raw(node));
+                    free.move_next();
                 }
             }
         }
     }
-
-    fn headers(&mut self) -> Headers {
-        Headers {scan: self.start as _, end: self.end as _}
-    }
 }
 
-struct Headers {
-    scan: *mut Header,
-    end: *mut Header
+struct Headings {
+    scan: *mut Heading,
+    end: *mut Heading
 }
 
-impl Iterator for Headers {
-    type Item = NonNull<Header>;
+impl Iterator for Headings {
+    type Item = NonNull<Heading>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.scan < self.end {
             unsafe {
                 let obj = NonNull::new_unchecked(self.scan);
-                self.scan = self.scan.add((*self.scan).granule_size().0);
+                self.scan = self.scan.add((*self.scan).gsize().0);
                 Some(obj)
             }
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    use std::ptr;
+
+    #[test]
+    fn sizes() {
+        assert_eq!(size_of::<Granule>(), size_of::<usize>()); // granule is "word"-sized
+
+        // Object references are granule-sized:
+        assert_eq!(size_of::<Gc<()>>(), size_of::<Granule>());
+        assert_eq!(size_of::<ORef>(), size_of::<Granule>());
+
+        // Gc<T> has null-pointer optimization:
+        assert_eq!(size_of::<Option<Gc<()>>>(), size_of::<Granule>());
+
+        // Header/free list node is two granules:
+        assert_eq!(size_of::<Header>(), 2*size_of::<Granule>());
+        assert_eq!(size_of::<FreeListNode>(), size_of::<Header>());
+    }
+
+    #[test]
+    fn new_heap() {
+        let heap = Heap::new((1 << 22 /* 4 MiB */) + 3).unwrap();
+        assert!(heap.start != ptr::null_mut());
+        assert_eq!(heap.end as usize - heap.start as usize, 1 << 22);
+    }
+
+    #[test]
+    fn alloc_refs() {
+        let mut heap = Heap::new(1 << 22).unwrap();
+        let len = 1 << 7;
+        let obj: Gc<()> = unsafe { heap.alloc_refs(ORef::NULL, len).unwrap() };
+        let header = obj.header();
+        assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize(len));
+        assert!(!header.is_bytes());
+        assert!(!header.is_marked());
+        assert_eq!(header.class, ORef::NULL);
+    }
+
+    #[test]
+    fn alloc_bytes() {
+        let mut heap = Heap::new(1 << 22).unwrap();
+        let len = (1 << 10) + 3;
+        let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len).unwrap() };
+        let header = obj.header();
+        // FIXME: Original `len` got lost:
+        assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize::in_granules(len).unwrap());
+        assert!(header.is_bytes());
+        assert!(!header.is_marked());
+        assert_eq!(header.class, ORef::NULL);
     }
 }
 

@@ -10,6 +10,10 @@ dev-build:
 check:
 	cargo check
 
+.PHONY: test
+test:
+	cargo test
+
 .PHONY: run
 run:
 	cargo run
