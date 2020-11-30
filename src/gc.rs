@@ -167,7 +167,7 @@ impl Heading {
         if self.is_bytes() {
             self.0 >> TAG_BITCOUNT
         } else {
-            (self.0 >> TAG_BITCOUNT) * size_of::<Granule>()
+            GSize::from(self.0 >> TAG_BITCOUNT).in_bytes()
         }
     }
 
