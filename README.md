@@ -12,3 +12,6 @@ An educational and efficient Python implementation. The goal is to teach
 advanced programming language and VM implementation, so compatibility may
 be compromised for clarity or efficiency.
 
+At the moment [the blog](https://nilern.github.io/Kyy/) should be the most
+interesting part of this project.
+
