@@ -290,7 +290,7 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_refs(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
+    unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
         self.alloc(Heading::slots(GSize::from(len)), class, align_of::<Granule>())
     }
 
@@ -415,10 +415,10 @@ mod tests {
     }
 
     #[test]
-    fn alloc_refs() {
+    fn alloc_slots() {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = 1 << 7;
-        let obj: Gc<()> = unsafe { heap.alloc_refs(ORef::NULL, len).unwrap() };
+        let obj: Gc<()> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
         let header = obj.header();
         assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize(len));
         assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
