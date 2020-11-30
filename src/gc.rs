@@ -138,22 +138,36 @@ const MARK_BIT: usize = 0b01;
 struct Heading(usize);
 
 impl Heading {
-    fn new(gsize: GSize, is_bytes: bool) -> Heading {
-        Heading(gsize.0 << TAG_BITCOUNT | (is_bytes as usize) << BYTES_SHIFT)
+    fn bytes(size: usize) -> Heading {
+        let size = size + size_of::<Header>();
+        Heading(size << TAG_BITCOUNT | BYTES_BIT)
     }
 
-    fn filler(gsize: GSize) -> Heading {
-        Heading(gsize.0 << TAG_BITCOUNT | BYTES_BIT)
+    fn slots(gsize: GSize) -> Heading {
+        let gsize = gsize + GSize::of::<Header>().unwrap();
+        Heading(gsize.0 << TAG_BITCOUNT)
     }
 
-    // OPTIMIZE: Don't include Header size (requires alignment hole recognizability).
-    fn gsize(&self) -> GSize { GSize(self.0 >> TAG_BITCOUNT) }
-
-    fn set_gsize(&mut self, size: GSize) {
-        self.0 = (size.0 << TAG_BITCOUNT) | (self.0 & TAG_MASK)
-    }
+    fn filler(gsize: GSize) -> Heading { Heading::slots(gsize) }
 
     fn is_bytes(&self) -> bool { (self.0 & BYTES_BIT) == BYTES_BIT }
+
+    // OPTIMIZE: Don't include Header size (requires alignment hole recognizability).
+    fn gsize(&self) -> GSize {
+        if self.is_bytes() {
+            GSize::in_granules(self.0 >> TAG_BITCOUNT).unwrap()
+        } else {
+            GSize::from(self.0 >> TAG_BITCOUNT)
+        }
+    }
+
+    fn size(&self) -> usize {
+        if self.is_bytes() {
+            self.0 >> TAG_BITCOUNT
+        } else {
+            (self.0 >> TAG_BITCOUNT) * size_of::<Granule>()
+        }
+    }
 
     fn is_marked(&self) -> bool { (self.0 & MARK_BIT) == MARK_BIT }
 
@@ -173,7 +187,7 @@ struct Header {
 impl Header {
     fn gsize(&self) -> GSize { self.heading.gsize() }
 
-    fn set_gsize(&mut self, size: GSize) { self.heading.set_gsize(size) }
+    fn size(&self) -> usize { self.heading.size() }
 
     fn is_bytes(&self) -> bool { self.heading.is_bytes() }
 
@@ -248,8 +262,8 @@ impl Heap {
     }
 
     // FIXME: alignment
-    unsafe fn alloc(&mut self, class: ORef, size: usize, align: usize, is_bytes: bool) -> Option<Gc<()>> {
-        let gsize = GSize::of::<Header>().unwrap() + GSize::in_granules(size)?;
+    unsafe fn alloc(&mut self, heading: Heading, class: ORef, align: usize) -> Option<Gc<()>> {
+        let gsize = heading.gsize();
         let mut prev: singly_linked_list::CursorMut<FreeListAdapter> = self.free.cursor_mut();
 
         loop {
@@ -270,18 +284,18 @@ impl Heap {
                     }
                 }
 
-                *obj = Header { heading: Heading::new(gsize, is_bytes), class };
+                *obj = Header { heading, class };
                 return Some(Gc::from_raw(obj.add(1) as *mut ()));
             }
         }
     }
 
     unsafe fn alloc_refs(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
-        self.alloc(class, GSize::from(len).in_bytes(), align_of::<Granule>(), false)
+        self.alloc(Heading::slots(GSize::from(len)), class, align_of::<Granule>())
     }
 
-    unsafe fn alloc_bytes(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
-        self.alloc(class, len, align_of::<u8>(), true)
+    unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<()>> {
+        self.alloc(Heading::bytes(len), class, align_of::<u8>())
     }
 
     unsafe fn gc(&mut self, roots: &mut [ORef]) {
@@ -337,7 +351,7 @@ impl Heap {
                     }
                 }
 
-                heading.set_gsize(gsize);
+                *heading = Heading::filler(gsize);
 
                 if gsize >= GSize::of::<Header>().unwrap() {
                     let node: *mut FreeListNode = transmute(heading);
@@ -407,6 +421,7 @@ mod tests {
         let obj: Gc<()> = unsafe { heap.alloc_refs(ORef::NULL, len).unwrap() };
         let header = obj.header();
         assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize(len));
+        assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
         assert!(!header.is_bytes());
         assert!(!header.is_marked());
         assert_eq!(header.class, ORef::NULL);
@@ -416,10 +431,10 @@ mod tests {
     fn alloc_bytes() {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = (1 << 10) + 3;
-        let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len).unwrap() };
+        let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
         let header = obj.header();
-        // FIXME: Original `len` got lost:
         assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize::in_granules(len).unwrap());
+        assert_eq!(header.size(), size_of::<Header>() + len);
         assert!(header.is_bytes());
         assert!(!header.is_marked());
         assert_eq!(header.class, ORef::NULL);
