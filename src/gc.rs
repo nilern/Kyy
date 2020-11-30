@@ -195,19 +195,6 @@ impl Header {
             })
         }
     }
-
-    unsafe fn scan(&mut self, heap: &mut Heap, greys: &mut Vec<Gc<()>>) {
-        self.slots_mut().map(|slots|
-            for slot in slots {
-                if let Ok(obj) = Gc::try_from(*slot) {
-                    if !obj.is_marked() {
-                        *slot = ORef::from(obj.mark(heap));
-                        greys.push(obj);
-                    }
-                }
-            }
-        );
-    }
 }
 
 // ---
@@ -315,7 +302,16 @@ impl Heap {
         }
 
         while let Some(mut obj) = greys.pop() {
-            obj.header_mut().scan(self, &mut greys);
+            obj.header_mut().slots_mut().map(|slots|
+                for slot in slots {
+                    if let Ok(obj) = Gc::try_from(*slot) {
+                        if !obj.is_marked() {
+                            *slot = ORef::from(obj.mark(self));
+                            greys.push(obj);
+                        }
+                    }
+                }
+            );
         }
     }
 
