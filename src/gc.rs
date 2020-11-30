@@ -41,7 +41,9 @@ impl GSize {
         Some(GSize(size.checked_add(size_of::<Granule>() - 1)? / size_of::<Granule>()))
     }
 
-    fn of<T>() -> Option<GSize> { GSize::in_granules(size_of::<T>()) }
+    fn of<T>() -> GSize {
+        GSize((size_of::<T>() + size_of::<Granule>() - 1) / size_of::<Granule>())
+    }
 
     fn in_bytes(self) -> usize { self.0 * size_of::<Granule>() }
 }
@@ -144,7 +146,7 @@ impl Heading {
     }
 
     fn slots(gsize: GSize) -> Heading {
-        let gsize = gsize + GSize::of::<Header>().unwrap();
+        let gsize = gsize + GSize::of::<Header>();
         Heading(gsize.0 << TAG_BITCOUNT)
     }
 
@@ -277,7 +279,7 @@ impl Heap {
                 if slop > GSize::from(0) {
                     let hole: *mut Heading = (obj as *const Granule).add(gsize.0) as _;
                     *hole = Heading::filler(slop);
-                    if slop >= GSize::of::<FreeListNode>().unwrap() {
+                    if slop >= GSize::of::<FreeListNode>() {
                         let remainder: *mut FreeListNode = hole as _;
                         (*remainder).link = SinglyLinkedListLink::new();
                         prev.insert_after(UnsafeRef::from_raw(remainder));
@@ -353,7 +355,7 @@ impl Heap {
 
                 *heading = Heading::filler(gsize);
 
-                if gsize >= GSize::of::<Header>().unwrap() {
+                if gsize >= GSize::of::<Header>() {
                     let node: *mut FreeListNode = transmute(heading);
                     (*node).link = SinglyLinkedListLink::new();
                     free.insert_after(UnsafeRef::from_raw(node));
@@ -420,7 +422,7 @@ mod tests {
         let len = 1 << 7;
         let obj: Gc<()> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
         let header = obj.header();
-        assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize(len));
+        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize(len));
         assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
         assert!(!header.is_bytes());
         assert!(!header.is_marked());
@@ -433,7 +435,7 @@ mod tests {
         let len = (1 << 10) + 3;
         let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
         let header = obj.header();
-        assert_eq!(header.gsize(), GSize::of::<Header>().unwrap() + GSize::in_granules(len).unwrap());
+        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::in_granules(len).unwrap());
         assert_eq!(header.size(), size_of::<Header>() + len);
         assert!(header.is_bytes());
         assert!(!header.is_marked());
