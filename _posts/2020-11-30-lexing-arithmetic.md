@@ -1,8 +1,8 @@
 ---
 layout: default
 title: "Lexing Arithmetic Expressions"
-date: 2020-11-19 19:58:00 +0200
-categories: lexing parsing
+date: 2020-11-19 21:59:00 +0200
+tags: lexing parsing
 ---
 
 # Lexing Arithmetic Expressions
@@ -35,8 +35,8 @@ digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 ```
 
 Or rather, that grammar with whitespace skipping added. (Incidentally, if you
-don't know how to read BNF you probably shouldn't be reading this blog just
-yet.)
+have never encountered BNF before you probably shouldn't be reading this blog
+just yet.)
 
 Basically the goal is to turn input like
 
@@ -52,27 +52,29 @@ Add(Const(1), Mul(Const(2), Const(3)))
 
 ## Separating Tokenization Concern into Lexer
 
-Character-level grammars look noisy. What is much worse is that popular parsing
-techniques with a small lookahead like LL(1) (e.g. handwritten recursive
-descent) and (LA)LR(1) (e.g. YACC or
+Character-level grammars look noisy. Far worse, they often cannot be parsed
+with popular parsing techniques with a small lookahead like LL(1) (e.g.
+handwritten recursive descent) and (LA)LR(1) (e.g. YACC or
 [LALRPOP](http://lalrpop.github.io/lalrpop/)). So the parsing task is often
-split into two layers: tokenization AKA lexing, which splits the input into
-tokens (e.g. keywords, operators, constants, identifiers) and parsing proper,
+split into two layers: tokenization a.k.a. lexing, which splits the input into
+tokens (e.g. keywords, operators, constants, identifiers) and parsing "proper"
 which parses the token stream to create more structured data like syntax trees.
 
-Tokens don't usually contain nested structures so they can be described with
-regular grammars or regular expressions, which can be implemented very
-efficiently with stackless nondeterministic or even deterministic automata.
-Because a token contains much more information than a character the token
-stream can often be parsed with relatively weak parsing techniques. So the
-combination of regular expressions and e.g. LL(1) becomes considerably more
-powerful than either component.
+The division into lexing and parsing makes deterministic parsing techniques
+usable. Tokens can usually be defined with regular expressions which can be
+implemented very efficiently with finite state machines. Because a token
+contains much more information than a character the token stream can often be
+parsed with relatively weak parsing techniques like the deterministic LR and LL
+parsers. (LA)LR(1) can parse most sensible programming languages from a token
+stream and LL(1) served CPython for many years (as we will see in later posts,
+indentation sensitivity is mostly implemented in the lexer).
 
-Being able to use a deterministic parsing algorithm like LL(k) or (LA)LR(k)
+In language design a deterministic parsing algorithm like LL(k) or (LA)LR(k)
 also has the benefit of ensuring that the programming language grammar is
-deterministic. In fact we do not have any better way to avoid grammar
+deterministic. In fact it is one of the best known methods to avoid grammar
 ambiguities. Natural language is full of ambiguity, but an ambiguous
-programming language syntax would probably be unusable at best.
+programming language syntax would probably be unusable at best. But we don't
+need to worry about any of that when reimplementing an existing language.
 
 So we can split our arithmetic grammar into a token grammar
 
@@ -110,9 +112,6 @@ into a stream of tokens somewhat like
 ["1", "+", "2", "*", "3"]
 ```
 
-It is also useful to view the lexer as a stream or iterator transformer like
-`map` and `filter`.
-
 ## Token Datatype
 
 Let's start by adding a `Token` enum into an empty file `src/lexer.rs`:
@@ -137,9 +136,11 @@ motivation.
 We could make the tokens homogeneous records of a token type tag and a string
 slice. We would still have a 'zero-copy' lexer with lightweight tokens since
 taking a `&str` causes no (heap) allocation. But the string slices would
-contain no useful data for the operators while failing to convey through the
-type system that the characters of an integer token are guaranteed to be
-parsable into an integer.
+contain no useful data for the operators while failing to [convey through the
+type
+system](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
+that the characters of an integer token are guaranteed to be parsable into an
+integer.
 
 ## Tracking Source Locations
 
@@ -182,8 +183,8 @@ pub struct Spanning<T> {
 The location information consists of just the filename and byte offset into the
 file. Not saving the line and column saves space and can be recomputed from the
 file contents and the offset. Reopening files should not be a problem since
-when we are printing error messages or using the debugger we are on a slow path
-anyway. And if the source code file changes it should be reloaded anyway.
+when we are printing error messages or using the debugger we are already on a
+slow path. And if the source code file changes it should be reloaded anyway.
 
 The filenames are optional because not all code comes from files (e.g. REPL
 input lines or `eval`/`exec` input strings). The filename should be shared
@@ -195,10 +196,11 @@ the Global Interpreter Lock. Using atomic instructions for incrementing and
 decrementing reference counts is slightly slower, so Rust also offers the `Rc`
 type for single-threaded reference counting (to enforce single-threaded use
 `Rc` does not implement `Send` or `Sync`). Reference counting also cannot
-collect cycles which interpreters inevitably create e.g. to support recursion.
-I plan to implement a tracing garbage collector for Kyy but debugging garbage
-collection before being able to even parse anything would be extremely
-demoralizing.
+collect cycles which interpreters inevitably create e.g. to support recursion,
+so one must either also implement a tracing GC for backup (like CPython) or
+break cycles manually (like `Arc` and Swift). I plan to implement a tracing
+garbage collector for Kyy but debugging garbage collection before being able to
+even parse anything would be extremely demoralizing.
 
 These are just simple records so I made the fields public. I anticipate no
 problems from this "lack of abstraction". Often objects or other abstract
@@ -210,8 +212,9 @@ when it is kept immutable. Getters and setters make a mockery of both.
 A lexer can be represented idiomatically in Rust by making it a function from
 an iterator of chars to an iterator of tokens. However it is easier to
 implement a lexer that only works on string slices `&str` and in these days of
-ample memory it is actually more efficient to read the compilation unit into a
-`String` up front.
+ample memory [it is actually more
+efficient](https://nothings.org/computer/lexing.html) to read the compilation
+unit into a `String` up front.
 
 ```rust
 struct LookaheadlessLexer<'a> {
@@ -220,6 +223,15 @@ struct LookaheadlessLexer<'a> {
     filename: Option<Arc<String>>
 }
 ```
+
+Of course we have the string slice in `chars`. Additionally we need a byte
+`index` to keep track of our position in the slice. The index also gets saved
+into the tokens, along with the `filename`. One can get into very Rust-specific
+troubles when parameterizing structs over lifetimes like this but hey,
+zero-copy lexing sure makes a Rust programmer proud.
+
+Some utility methods are essential to `impl`ement. In particular it would be
+unbearable to repeat the UTF-8 iterator fiddling in `peek_char` and `pop_char`:
 
 ```rust
 impl<'a> LookaheadlessLexer<'a> {
@@ -264,25 +276,20 @@ describe tokens. Lexer generators like Lex convert the token regexen into
 efficient (and undebuggable) deterministive finite automata that run in
 constant space and linear time. Unfortunately the regex types of most
 programming languages [use exponential backtracking
-algorithms](https://swtch.com/~rsc/regexp/regexp1.html) instead.
+algorithms](https://swtch.com/~rsc/regexp/regexp1.html) instead (but [not
+Rust](https://crates.io/crates/regex), yay!).
 
-That [site](https://swtch.com/~rsc/regexp/) is a great resource on regex
-implementation. Of course [hefty parsing
-tomes](https://www.amazon.com/gp/product/038720248X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=3d1dc256f7fc773c5233d9b855971b50)
-(affiliate link) cover regular language parsing but mostly focus on
-context-free grammars. Entry-level compiler textbooks like [the one I
-read](https://www.amazon.com/gp/product/052182060X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=052182060X&linkId=78364d1d3f1656185bed73974628dd3d)
-(affiliate link) spend a disproportionate amount of space on DFA construction
-while recommending that you just use a third-party lexer generator. Regular
-expression derivatives can also be used to both [directly parse with regular
-expressions](http://matt.might.net/articles/implementation-of-regular-expression-matching-in-scheme-with-derivatives/)
-(quite inefficiently) and to [construct
-DFA:s](https://www.ccs.neu.edu/home/turon/re-deriv.pdf).
-
-When lexing by hand it is most convenient to use a kind of nonrecursive [LL(m,
-k)](https://www.antlr.org/papers/parr.phd.thesis.pdf) technique. Backtracking
-would be both more complicated to implement and less efficient. Manual DFA
-construction is unrealistic and the code would be unreadable.
+Handwritten lexers naturally gravitate to LL(1) (or [LL(m,
+k)](https://www.antlr.org/papers/parr.phd.thesis.pdf)). The only systematic
+account of this methodology that I have seen was "Pattern 2: LL(1)
+Recursive-Descent Lexer" in [Language Implementation
+Patterns](https://www.amazon.com/gp/product/193435645X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=193435645X&linkId=2a158d853eecc599bed5cff5950cc0af)
+(affiliate link). [Intriguing that [the ANTLR
+guy](https://twitter.com/the_antlr_guy) would write a book with 50 pages of
+material on manual LL and Packrat (!) parsing.] Parr also points out that
+unlike regular expressions, LL(1) can easily deal with nested block comments
+(one of the numerous ML features also found in Rust). On the other hand regular
+expression implementations support infinite lookahead -- in constant space.
 
 To select from several alternatives we `match` a lookahead character:
 
@@ -315,9 +322,11 @@ impl<'a> Iterator for LookaheadlessLexer<'a> {
                 },
 ```
 
-Unsurprisingly loops (or tail recursion) can be used for repetition. Sometimes
-`*` can be elegantly converted into a `while` and `+` into `do ... while` loop
-but Rust does not have a `do ... while` (a.k.a `repeat ... until`) loop.
+Unsurprisingly loops (or tail recursion) can be used for repetition. Parr
+implements `*` with `while` loops and `+` with `do while` loops, but Rust does
+not have the latter and `while` conditions get a bit funky when we also have to
+deal with `Option`s.  My non-`for` loops usually start out as `loop { match
+...` anyway:
 
 ```rust
                 Some(c) if c.is_digit(10) => { // \d+ = \d \d*
@@ -343,9 +352,21 @@ but Rust does not have a `do ... while` (a.k.a `repeat ... until`) loop.
                 },
 ```
 
+Later I refactored to a while loop:
+
+```rust
+while let Some(d) = self.peek_char().and_then(|c| c.to_digit(10)) { // \d*
+    let _ = self.pop_char();
+    n = 10*n + isize::try_from(d).unwrap();
+}
+```
+
+What a complicated condition! At least there are less lines, which reduces
+bugs, I once heard Cliff Click say.
+
 Whitespace is just skipped and if we run out of characters when looking for the
 start of a token we are also out of tokens, so just propagate the `None`. Any
-other character is an error.
+other character is an error:
 
 ```rust
                 Some(c) if c.is_whitespace() => { self.pop_char(); }, // skip \s (\s* with the outer loop)
@@ -396,8 +417,8 @@ fn main() {
 ```
 
 `collect`ing an `Iterator` of `Result`s into a `Result<Vec<_>, _>` is a nice
-trick (although not very discoverable; whereas in Haskell the more general
-pattern `traverse` is in constant use). But this token printing will not last
+trick (although not very discoverable). In Haskell the more general pattern
+`traverse` is in constant use. In any case this token printing will not last
 long; in the next post we will parse the token stream into an abstract syntax
 tree, a much more useful data structure.
 

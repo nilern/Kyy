@@ -2,7 +2,7 @@
 layout: default
 title: "Starting Out: Echo REPL"
 date: 2020-11-09 22:46:00 +0200
-categories: tooling REPL
+tags: tooling REPL
 ---
 
 ## Starting Out: Echo REPL

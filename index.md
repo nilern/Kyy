@@ -16,7 +16,8 @@ I document my progress and give background explanations in this blog,
 structured like a follow-along tutorial:
 
 <ol>
-  {% for post in site.posts %}
+  {% assign chrono_posts = site.posts | sort: "date" %}
+  {% for post in chrono_posts %}
     <li>
       <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
     </li>
