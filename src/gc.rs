@@ -4,7 +4,7 @@ use std::alloc::{Layout, alloc_zeroed};
 use std::convert::TryFrom;
 use std::mem::{transmute, size_of, align_of};
 use std::ops::{Deref, DerefMut, Add, AddAssign, Sub};
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 use std::slice;
 
 // TODO: Python None = ptr::null?
@@ -150,7 +150,7 @@ impl Heading {
         Heading(gsize.0 << TAG_BITCOUNT)
     }
 
-    fn filler(gsize: GSize) -> Heading { Heading::slots(gsize) }
+    fn filler(size: usize) -> Heading { Heading(size << TAG_BITCOUNT | BYTES_BIT) }
 
     fn is_bytes(&self) -> bool { (self.0 & BYTES_BIT) == BYTES_BIT }
 
@@ -217,7 +217,7 @@ impl Header {
 
 #[repr(C)]
 struct FreeListNode {
-    heading: Heading,
+    heading: usize,
     link: SinglyLinkedListLink
 }
 
@@ -226,7 +226,13 @@ intrusive_adapter!(FreeListAdapter = UnsafeRef<FreeListNode>: FreeListNode { lin
 type FreeList = SinglyLinkedList<FreeListAdapter>;
 
 impl FreeListNode {
-    fn gsize(&self) -> GSize { self.heading.gsize() }
+    fn new(size: usize) -> FreeListNode {
+        FreeListNode { heading: size << TAG_BITCOUNT, link: SinglyLinkedListLink::new() }
+    }
+
+    fn size(&self) -> usize { self.heading >> TAG_BITCOUNT }
+
+    fn set_size(&mut self, size: usize) { self.heading = size << TAG_BITCOUNT }
 }
 
 // ---
@@ -246,10 +252,7 @@ impl Heap {
             if !start.is_null() {
                 let end = start.add(max_size);
                 let pangaea = start as *mut FreeListNode;
-                *pangaea = FreeListNode {
-                    heading: Heading::filler(max_gsize),
-                    link: SinglyLinkedListLink::new()
-                };
+                *pangaea = FreeListNode::new(max_size);
                 let mut free = SinglyLinkedList::new(FreeListAdapter::new());
                 free.push_front(UnsafeRef::from_raw(pangaea));
                 Some(Heap {
@@ -263,41 +266,51 @@ impl Heap {
         }
     }
 
-    // FIXME: alignment
-    unsafe fn alloc(&mut self, heading: Heading, class: ORef, align: usize) -> Option<Gc<()>> {
-        let gsize = heading.gsize();
+    unsafe fn alloc(&mut self, heading: Heading, class: ORef, size: usize, align: usize) -> Option<Gc<()>> {
+        debug_assert!(heading.size() == size_of::<Header>() + size);
+        debug_assert!(align.is_power_of_two());
+        debug_assert!(heading.is_bytes() || align == align_of::<Granule>());
+
+        let align = align.max(align_of::<Header>());
         let mut prev: singly_linked_list::CursorMut<FreeListAdapter> = self.free.cursor_mut();
 
         loop {
-            let curr_size = prev.peek_next().get()?.gsize();
-            if curr_size < gsize {
-                prev.move_next();
-            } else {
-                let obj: *mut Header = UnsafeRef::into_raw(prev.remove_next()?) as _;
+            let curr: *mut FreeListNode = transmute::<&FreeListNode, _>(prev.peek_next().get()?);
+            let start_addr: usize = curr as _;
+            let end_addr = start_addr + (*curr).size();
 
-                let slop: GSize = curr_size - gsize;
-                if slop > GSize::from(0) {
-                    let hole: *mut Heading = (obj as *const Granule).add(gsize.0) as _;
-                    *hole = Heading::filler(slop);
-                    if slop >= GSize::of::<FreeListNode>() {
-                        let remainder: *mut FreeListNode = hole as _;
-                        (*remainder).link = SinglyLinkedListLink::new();
-                        prev.insert_after(UnsafeRef::from_raw(remainder));
+            if let Some(obj_addr) = end_addr.checked_sub(size) {
+                let obj_addr = obj_addr & !(align - 1);
+
+                if let Some(header_addr) = obj_addr.checked_sub(size_of::<Header>()) {
+                    if let Some(slop) = header_addr.checked_sub(start_addr) {
+                        if slop == 0 {
+                            prev.remove_next();
+                        } else if slop < size_of::<FreeListNode>() {
+                            prev.remove_next();
+                            // Because of alignment requirements, here `slop == size_of::<Granule>()`:
+                            *(curr as *mut Heading) = Heading::filler(slop);
+                        } else {
+                            (*curr).set_size(slop);
+                        }
+
+                        *(header_addr as *mut Header) = Header {heading, class};
+                        return Some(Gc::from_raw(obj_addr as *mut ()));
                     }
                 }
-
-                *obj = Header { heading, class };
-                return Some(Gc::from_raw(obj.add(1) as *mut ()));
             }
+
+            prev.move_next();
         }
     }
 
     unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
-        self.alloc(Heading::slots(GSize::from(len)), class, align_of::<Granule>())
+        let gsize = GSize::from(len);
+        self.alloc(Heading::slots(gsize), class, gsize.in_bytes(), align_of::<Granule>())
     }
 
     unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<()>> {
-        self.alloc(Heading::bytes(len), class, align_of::<u8>())
+        self.alloc(Heading::bytes(len), class, len, align)
     }
 
     unsafe fn gc(&mut self, roots: &mut [ORef]) {
@@ -331,7 +344,6 @@ impl Heap {
         }
     }
 
-    // FIXME: zeroing
     unsafe fn sweep(&mut self) {
         self.free.fast_clear();
         let mut free = self.free.cursor_mut();
@@ -342,22 +354,25 @@ impl Heap {
             if heading.is_marked() {
                 heading.unmark();
             } else {
-                let mut gsize = heading.gsize();
+                let mut size = heading.size();
                 while let Some(mut next) = objs.next() {
                     let next: &mut Heading = next.as_mut();
                     if next.is_marked() {
                         next.unmark();
                         break;
                     } else {
-                        gsize += (*next).gsize();
+                        size += (*next).size();
                     }
                 }
 
-                *heading = Heading::filler(gsize);
+                if size < size_of::<FreeListNode>() {
+                    *heading = Heading::filler(size);
+                } else {
+                    let heading: *mut Heading = heading as _;
+                    let node: *mut FreeListNode = heading as _;
+                    *node = FreeListNode::new(size);
+                    ptr::write_bytes(node.add(1) as *mut u8, 0, size - size_of::<FreeListNode>());
 
-                if gsize >= GSize::of::<Header>() {
-                    let node: *mut FreeListNode = transmute(heading);
-                    (*node).link = SinglyLinkedListLink::new();
                     free.insert_after(UnsafeRef::from_raw(node));
                     free.move_next();
                 }
