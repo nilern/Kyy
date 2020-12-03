@@ -1,4 +1,6 @@
 mod gc;
+mod state;
+mod int;
 mod lexer;
 mod parser;
 mod eval;

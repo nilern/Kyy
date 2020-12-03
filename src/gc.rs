@@ -3,7 +3,7 @@ use intrusive_collections::singly_linked_list;
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::convert::TryFrom;
 use std::mem::{transmute, size_of, align_of};
-use std::ops::{Deref, DerefMut, Add, AddAssign, Sub};
+use std::ops::{Add, AddAssign, Sub};
 use std::ptr::{self, NonNull};
 use std::slice;
 
@@ -63,20 +63,17 @@ impl<T> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
 }
 
-impl<T> Deref for Gc<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T { unsafe { transmute(self.0) } }
-}
-
-impl<T> DerefMut for Gc<T> {
-    fn deref_mut(&mut self) -> &mut T { unsafe { transmute(self.0) } }
+impl Gc<()> {
+    pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc(self.0.cast()) }
 }
 
 impl<T> Gc<T> {
     unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(NonNull::new_unchecked(raw)) }
 
-    unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
+    /// Safety: The returned reference must not be live across a safepoint.
+    pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
+
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
 
     fn header<'a>(&'a self) -> &'a Header {
         unsafe {
@@ -98,6 +95,8 @@ impl<T> Gc<T> {
         self.header_mut().mark();
         self // non-moving GC ATM; returned for forwards compatibility
     }
+
+    pub fn set_class(&mut self, class: ORef) { self.header_mut().class = class }
 }
 
 // ---
@@ -107,11 +106,11 @@ impl<T> Gc<T> {
 pub struct ORef(usize);
 
 impl ORef {
-    const NULL: ORef = ORef(0);
+    pub const NULL: ORef = ORef(0);
 
     fn is_null(self) -> bool { self.0 == 0 }
 
-    unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
+    pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
 
     fn as_ptr(self) -> Option<NonNull<()>> { NonNull::new(self.0 as *mut ()) }
 }
@@ -324,23 +323,22 @@ impl Heap {
         self.alloc(Heading::bytes(len), class, len, align)
     }
 
-    pub unsafe fn gc(&mut self, roots: &mut [ORef]) {
-        self.mark(roots);
+    pub unsafe fn mark_root(&mut self, greys: &mut Vec<Gc<()>>, root: ORef) -> ORef {
+        if let Ok(obj) = Gc::try_from(root) {
+            if !obj.is_marked() {
+                let res = ORef::from(obj.mark(self));
+                greys.push(obj);
+            }
+        }
+        root
+    }
+
+    pub unsafe fn gc(&mut self, greys: &mut Vec<Gc<()>>) {
+        self.mark(greys);
         self.sweep();
     }
 
-    unsafe fn mark(&mut self, roots: &mut [ORef]) {
-        let mut greys: Vec<Gc<()>> = Vec::new(); // Explicit mark stack to avoid stack overflow
-
-        for root in roots {
-            if let Ok(obj) = Gc::try_from(*root) {
-                if !obj.is_marked() {
-                    *root = ORef::from(obj.mark(self));
-                    greys.push(obj);
-                }
-            }
-        }
-
+    unsafe fn mark(&mut self, greys: &mut Vec<Gc<()>>) {
         while let Some(mut obj) = greys.pop() {
             obj.header_mut().slots_mut().map(|slots|
                 for slot in slots {
@@ -498,7 +496,7 @@ mod tests {
             size += 1;
         }
 
-        unsafe { heap.gc(&mut []); }
+        unsafe { heap.gc(&mut Vec::new()); }
         assert_eq!(heap.free.cursor().peek_next().get().unwrap().size(), heap_size);
     }
 }
