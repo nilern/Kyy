@@ -51,7 +51,7 @@ impl GSize {
 // ---
 
 #[derive(Debug, Eq)]
-struct Gc<T>(NonNull<T>);
+pub struct Gc<T>(NonNull<T>);
 
 impl<T> Clone for Gc<T> {
     fn clone(&self) -> Self { *self }
@@ -104,7 +104,7 @@ impl<T> Gc<T> {
 
 // Can be null and cannot be deref'd, unlike Gc<T>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ORef(usize);
+pub struct ORef(usize);
 
 impl ORef {
     const NULL: ORef = ORef(0);
@@ -237,7 +237,7 @@ impl FreeListNode {
 
 // ---
 
-struct Heap {
+pub struct Heap {
     start: *mut Header,
     end: *mut Header,
     free: FreeList
@@ -253,7 +253,7 @@ impl Drop for Heap {
 }
 
 impl Heap {
-    fn new(max_size: usize) -> Option<Heap> {
+    pub fn new(max_size: usize) -> Option<Heap> {
         unsafe {
             let max_gsize = GSize(max_size / size_of::<Granule>());
             let max_size = max_gsize.in_bytes(); // rounded down, unlike `GSize::in_granules`
@@ -315,16 +315,16 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
+    pub unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
         let gsize = GSize::from(len);
         self.alloc(Heading::slots(gsize), class, gsize.in_bytes(), align_of::<Granule>())
     }
 
-    unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<()>> {
+    pub unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<()>> {
         self.alloc(Heading::bytes(len), class, len, align)
     }
 
-    unsafe fn gc(&mut self, roots: &mut [ORef]) {
+    pub unsafe fn gc(&mut self, roots: &mut [ORef]) {
         self.mark(roots);
         self.sweep();
     }
