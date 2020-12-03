@@ -1,6 +1,6 @@
 use intrusive_collections::{intrusive_adapter, SinglyLinkedListLink, UnsafeRef, SinglyLinkedList};
 use intrusive_collections::singly_linked_list;
-use std::alloc::{Layout, alloc_zeroed};
+use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::convert::TryFrom;
 use std::mem::{transmute, size_of, align_of};
 use std::ops::{Deref, DerefMut, Add, AddAssign, Sub};
@@ -227,12 +227,12 @@ type FreeList = SinglyLinkedList<FreeListAdapter>;
 
 impl FreeListNode {
     fn new(size: usize) -> FreeListNode {
-        FreeListNode { heading: size << TAG_BITCOUNT, link: SinglyLinkedListLink::new() }
+        FreeListNode { heading: size << TAG_BITCOUNT | BYTES_BIT, link: SinglyLinkedListLink::new() }
     }
 
     fn size(&self) -> usize { self.heading >> TAG_BITCOUNT }
 
-    fn set_size(&mut self, size: usize) { self.heading = size << TAG_BITCOUNT }
+    fn set_size(&mut self, size: usize) { self.heading = size << TAG_BITCOUNT | BYTES_BIT }
 }
 
 // ---
@@ -241,6 +241,15 @@ struct Heap {
     start: *mut Header,
     end: *mut Header,
     free: FreeList
+}
+
+impl Drop for Heap {
+    fn drop(&mut self) {
+        self.free.clear();
+        unsafe {
+            dealloc(self.start as _, Layout::from_size_align_unchecked(self.size(), align_of::<Granule>()));
+        }
+    }
 }
 
 impl Heap {
@@ -265,6 +274,8 @@ impl Heap {
             }
         }
     }
+
+    fn size(&self) -> usize { self.end as usize - self.start as usize }
 
     unsafe fn alloc(&mut self, heading: Heading, class: ORef, size: usize, align: usize) -> Option<Gc<()>> {
         debug_assert!(heading.size() == size_of::<Header>() + size);
@@ -354,17 +365,18 @@ impl Heap {
             if heading.is_marked() {
                 heading.unmark();
             } else {
-                let mut size = heading.size();
+                let mut gsize = heading.gsize();
                 while let Some(mut next) = objs.next() {
                     let next: &mut Heading = next.as_mut();
                     if next.is_marked() {
                         next.unmark();
                         break;
                     } else {
-                        size += (*next).size();
+                        gsize += (*next).gsize();
                     }
                 }
 
+                let size = gsize.in_bytes();
                 if size < size_of::<FreeListNode>() {
                     *heading = Heading::filler(size);
                 } else {
@@ -428,7 +440,7 @@ mod tests {
     fn new_heap() {
         let heap = Heap::new((1 << 22 /* 4 MiB */) + 3).unwrap();
         assert!(heap.start != ptr::null_mut());
-        assert_eq!(heap.end as usize - heap.start as usize, 1 << 22);
+        assert_eq!(heap.size(), 1 << 22);
     }
 
     #[test]
@@ -455,6 +467,39 @@ mod tests {
         assert!(header.is_bytes());
         assert!(!header.is_marked());
         assert_eq!(header.class, ORef::NULL);
+    }
+
+    #[test]
+    fn collect() {
+        let mut heap = Heap::new(1000).unwrap();
+        let heap_size = heap.end as usize - heap.start as usize;
+
+        let mut size = 0;
+        loop {
+            if size % 3 == 0 {
+                if let Some(obj) = unsafe { heap.alloc_bytes(ORef::NULL, size, align_of::<f64>()) } {
+                    assert_eq!(obj.header().size(), size_of::<Header>() + size);
+                    assert!(obj.header().is_bytes());
+                    assert!(!obj.header().is_marked());
+                } else {
+                    break;
+                }
+            } else {
+                let len = GSize::in_granules(size).unwrap().0;
+                if let Some(obj) = unsafe { heap.alloc_slots(ORef::NULL, len) } {
+                    assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));
+                    assert!(!obj.header().is_bytes());
+                    assert!(!obj.header().is_marked());
+                } else {
+                    break;
+                }
+            }
+
+            size += 1;
+        }
+
+        unsafe { heap.gc(&mut []); }
+        assert_eq!(heap.free.cursor().peek_next().get().unwrap().size(), heap_size);
     }
 }
 
