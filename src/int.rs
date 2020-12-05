@@ -1,8 +1,7 @@
 use super::mutator::{KyyBytesType, KyyMutator, Root};
 
-#[derive(Clone, Copy)]
 #[repr(C)]
-pub struct Int(isize);
+pub struct Int(pub isize);
 
 unsafe impl KyyBytesType for Int {}
 
@@ -18,7 +17,7 @@ mod tests {
     fn alloc() {
         let mut km = KyyMutator::new(100).unwrap();
         let n = 12345;
-        let m = unsafe { Int::new(&mut km, Int(n)) };
+        let m = Int::new(&mut km, Int(n));
         assert_eq!(isize::from(m), n);
     }
 }

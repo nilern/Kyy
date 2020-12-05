@@ -1,6 +1,7 @@
 mod gc;
 mod mutator;
 mod int;
+mod tuple;
 mod lexer;
 mod parser;
 mod eval;

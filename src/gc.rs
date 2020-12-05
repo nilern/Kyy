@@ -14,10 +14,14 @@ struct Granule(usize);
 // ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct GSize(usize);
+pub struct GSize(usize);
 
 impl From<usize> for GSize {
     fn from(n: usize) -> GSize { GSize(n) }
+}
+
+impl From<GSize> for usize {
+    fn from(n: GSize) -> usize { n.0 }
 }
 
 impl Add for GSize {
@@ -41,7 +45,7 @@ impl GSize {
         Some(GSize(size.checked_add(size_of::<Granule>() - 1)? / size_of::<Granule>()))
     }
 
-    fn of<T>() -> GSize {
+    pub fn of<T>() -> GSize {
         GSize((size_of::<T>() + size_of::<Granule>() - 1) / size_of::<Granule>())
     }
 
@@ -63,19 +67,17 @@ impl<T> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
 }
 
-impl Gc<()> {
-    pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc(self.0.cast()) }
-}
-
 impl<T> Gc<T> {
-    unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(NonNull::new_unchecked(raw)) }
+    pub unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(NonNull::new_unchecked(raw)) }
+
+    pub unsafe fn unchecked_cast<U>(self) -> Gc<U> { Gc(self.0.cast()) }
 
     /// Safety: The returned reference must not be live across a safepoint.
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
 
-    fn header<'a>(&'a self) -> &'a Header {
+    pub fn header<'a>(&'a self) -> &'a Header {
         unsafe {
             let ptr = self.0.as_ref() as *const T;
             transmute((ptr as *const Header).offset(-1))
@@ -113,7 +115,7 @@ impl ORef {
 
     fn is_null(self) -> bool { self.0 == ptr::null_mut() }
 
-    pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
+    pub unsafe fn unchecked_cast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
 
     unsafe fn mark(self, heap: &mut Heap) -> ORef {
         if let Ok(obj) = Gc::try_from(self) {
@@ -128,7 +130,7 @@ impl TryFrom<ORef> for Gc<()> {
     type Error = ();
 
     fn try_from(oref: ORef) -> Result<Gc<()>, ()> {
-        if !oref.is_null() { unsafe{ Ok(oref.unchecked_downcast()) } } else { Err(()) }
+        if !oref.is_null() { unsafe{ Ok(oref.unchecked_cast()) } } else { Err(()) }
     }
 }
 
@@ -189,15 +191,15 @@ impl Heading {
 // ---
 
 #[repr(C)]
-struct Header {
+pub struct Header {
     heading: Heading,
     class: ORef
 }
 
 impl Header {
-    fn gsize(&self) -> GSize { self.heading.gsize() }
+    pub fn gsize(&self) -> GSize { self.heading.gsize() }
 
-    fn size(&self) -> usize { self.heading.size() }
+    pub fn size(&self) -> usize { self.heading.size() }
 
     fn is_bytes(&self) -> bool { self.heading.is_bytes() }
 
