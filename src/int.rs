@@ -1,5 +1,6 @@
 use super::mutator::{KyyBytesType, KyyMutator, Root};
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Int(isize);
 

@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::Cell;
 use std::mem::{size_of, align_of, transmute};
 
-use super::gc::{self, ORef, Gc};
+use super::gc::{self, ORef, Gc, Heap};
 use super::int::Int;
 
 #[derive(Debug, Clone)]
@@ -20,16 +20,21 @@ impl<T> Root<T> {
     pub unsafe fn as_mut_ptr(&self) -> *mut T { self.0.get().as_mut_ptr() }
 
     unsafe fn oref(&self) -> Gc<T> { self.0.get() }
+
+    unsafe fn mark(&self, heap: &mut Heap) {
+        self.0.set(heap.mark_root(self.0.get().into()).unchecked_downcast())
+    }
 }
 
 // ---
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Class {}
 
 // ---
 
-pub unsafe trait KyyType {
+pub unsafe trait KyyType: Copy {
     fn reify(km: &KyyMutator) -> Root<Class>;
 }
 
@@ -42,12 +47,22 @@ pub unsafe trait KyyBytesType: KyyType {
     }
 }
 
+#[derive(Clone, Copy)]
+struct BuiltinTypes {
+    type_class: Gc<Class>,
+    int_class: Gc<Class>
+}
+
 unsafe impl KyyType for Class {
-    fn reify(km: &KyyMutator) -> Root<Class> { Root::new(km.type_class) }
+    fn reify(km: &KyyMutator) -> Root<Class> {
+        unsafe { Root::new(km.types.type_class) }
+    }
 }
 
 unsafe impl KyyType for Int {
-    fn reify(km: &KyyMutator) -> Root<Class> { Root::new(km.int_class) }
+    fn reify(km: &KyyMutator) -> Root<Class> {
+        unsafe { Root::new(km.types.int_class) }
+    }
 }
 
 // ---
@@ -55,8 +70,7 @@ unsafe impl KyyType for Int {
 pub struct KyyMutator {
     heap: gc::Heap,
     roots: Vec<Root<()>>,
-    type_class: Gc<Class>,
-    int_class: Gc<Class>
+    types: BuiltinTypes
 }
 
 impl KyyMutator {
@@ -71,8 +85,7 @@ impl KyyMutator {
             Some(KyyMutator {
                 heap,
                 roots: Vec::new(),
-                type_class,
-                int_class
+                types: BuiltinTypes {type_class, int_class}
             })
         }
     }
@@ -98,17 +111,15 @@ impl KyyMutator {
     }
 
     unsafe fn gc(&mut self) {
-        let mut greys: Vec<Gc<()>> = Vec::new(); // explicit mark stack to avoid stack overflow
-
         self.roots.retain(|root| Rc::strong_count(&root.0) > 1);
-        for root in self.roots.iter_mut() {
-            root.0.set(self.heap
-                .mark_root(&mut greys, root.0.get().into()).unchecked_downcast());
+        for root in self.roots.iter() {
+            root.mark(&mut self.heap);
         }
-        self.type_class = self.heap.mark_root(&mut greys, self.type_class.into()).unchecked_downcast();
-        self.int_class = self.heap.mark_root(&mut greys, self.int_class.into()).unchecked_downcast();
+        let BuiltinTypes {ref mut type_class, ref mut int_class} = self.types;
+        *type_class = type_class.mark(&mut self.heap);
+        *int_class = int_class.mark(&mut self.heap);
 
-        self.heap.gc(&mut greys);
+        self.heap.gc();
     }
 }
 

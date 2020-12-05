@@ -91,8 +91,11 @@ impl<T> Gc<T> {
 
     fn is_marked(self) -> bool { self.header().is_marked() }
 
-    fn mark(mut self, heap: &mut Heap) -> Gc<T> {
-        self.header_mut().mark();
+    pub unsafe fn mark(mut self, heap: &mut Heap) -> Gc<T> {
+        if !self.is_marked() {
+            self.header_mut().mark();
+            heap.greys.push(Gc(self.0.cast()));
+        }
         self // non-moving GC ATM; returned for forwards compatibility
     }
 
@@ -112,7 +115,13 @@ impl ORef {
 
     pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
 
-    fn as_ptr(self) -> Option<NonNull<()>> { NonNull::new(self.0) }
+    unsafe fn mark(self, heap: &mut Heap) -> ORef {
+        if let Ok(obj) = Gc::try_from(self) {
+            obj.mark(heap).into()
+        } else {
+            self
+        }
+    }
 }
 
 impl TryFrom<ORef> for Gc<()> {
@@ -194,8 +203,6 @@ impl Header {
 
     fn mark(&mut self) { self.heading.mark(); }
 
-    fn unmark(&mut self) { self.heading.unmark(); }
-
     fn is_marked(&self) -> bool { self.heading.is_marked() }
 
     fn slots_mut(&mut self) -> Option<&mut [ORef]> {
@@ -239,7 +246,8 @@ impl FreeListNode {
 pub struct Heap {
     start: *mut Header,
     end: *mut Header,
-    free: FreeList
+    free: FreeList,
+    greys: Vec<Gc<()>>
 }
 
 impl Drop for Heap {
@@ -266,7 +274,8 @@ impl Heap {
                 Some(Heap {
                     start: start as *mut Header,
                     end: end as *mut Header,
-                    free: free
+                    free: free,
+                    greys: Vec::new()
                 })
             } else {
                 None
@@ -323,34 +332,23 @@ impl Heap {
         self.alloc(Heading::bytes(len), class, len, align)
     }
 
-    pub unsafe fn mark_root(&mut self, greys: &mut Vec<Gc<()>>, root: ORef) -> ORef {
-        if let Ok(obj) = Gc::try_from(root) {
-            if !obj.is_marked() {
-                let res = ORef::from(obj.mark(self));
-                greys.push(obj);
-            }
-        }
-        root
-    }
+    pub unsafe fn mark_root(&mut self, root: ORef) -> ORef { root.mark(self) }
 
-    pub unsafe fn gc(&mut self, greys: &mut Vec<Gc<()>>) {
-        self.mark(greys);
+    pub unsafe fn gc(&mut self) {
+        self.mark();
         self.sweep();
     }
 
-    unsafe fn mark(&mut self, greys: &mut Vec<Gc<()>>) {
-        while let Some(mut obj) = greys.pop() {
+    unsafe fn mark(&mut self) {
+        while let Some(mut obj) = self.greys.pop() {
             obj.header_mut().slots_mut().map(|slots|
                 for slot in slots {
-                    if let Ok(obj) = Gc::try_from(*slot) {
-                        if !obj.is_marked() {
-                            *slot = ORef::from(obj.mark(self));
-                            greys.push(obj);
-                        }
-                    }
+                    *slot = slot.mark(self);
                 }
             );
         }
+
+        self.greys.shrink_to_fit();
     }
 
     unsafe fn sweep(&mut self) {
@@ -496,7 +494,7 @@ mod tests {
             size += 1;
         }
 
-        unsafe { heap.gc(&mut Vec::new()); }
+        unsafe { heap.gc(); }
         assert_eq!(heap.free.cursor().peek_next().get().unwrap().size(), heap_size);
     }
 }
