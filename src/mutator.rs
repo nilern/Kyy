@@ -1,25 +1,25 @@
-use std::sync::Arc;
-use std::cell::UnsafeCell;
+use std::rc::Rc;
+use std::cell::Cell;
 use std::mem::{size_of, align_of, transmute};
 
 use super::gc::{self, ORef, Gc};
 use super::int::Int;
 
 #[derive(Debug, Clone)]
-pub struct Root<T>(Arc<UnsafeCell<Gc<T>>>);
+pub struct Root<T>(Rc<Cell<Gc<T>>>);
 
 impl<T> Root<T> {
-    fn new(oref: Gc<T>) -> Root<T> { Root(Arc::new(UnsafeCell::new(oref))) }
+    fn new(oref: Gc<T>) -> Root<T> { Root(Rc::new(Cell::new(oref))) }
 
     pub unsafe fn unchecked_downcast<U>(self) -> Root<U> { transmute(self) }
 
     /// Safety: The returned reference must not be live across a safepoint.
-    pub unsafe fn as_ref(&self) -> &T { (*self.0.get()).as_ref() }
+    pub unsafe fn as_ref<'a>(&'a self) -> &'a T { transmute(self.0.get().as_ref()) }
 
     /// Safety: The returned pointer must not be live across a safepoint.
-    pub unsafe fn as_mut_ptr(&self) -> *mut T { (*self.0.get()).as_mut_ptr() }
+    pub unsafe fn as_mut_ptr(&self) -> *mut T { self.0.get().as_mut_ptr() }
 
-    unsafe fn oref(&self) -> Gc<T> { *self.0.get() }
+    unsafe fn oref(&self) -> Gc<T> { self.0.get() }
 }
 
 // ---
@@ -41,7 +41,7 @@ impl KyyType for Int {
 
 pub struct KyyMutator {
     heap: gc::Heap,
-    handles: Vec<Root<()>>,
+    roots: Vec<Root<()>>,
     type_class: Gc<Class>,
     int_class: Gc<Class>
 }
@@ -57,7 +57,7 @@ impl KyyMutator {
                 .unchecked_downcast();
             Some(KyyMutator {
                 heap,
-                handles: Vec::new(),
+                roots: Vec::new(),
                 type_class,
                 int_class
             })
@@ -69,9 +69,9 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
         });
-        let handle = Root::new(oref);
-        self.handles.push(handle.clone());
-        handle
+        let root = Root::new(oref);
+        self.roots.push(root.clone());
+        root
     }
 
     pub unsafe fn alloc_bytes(&mut self, class: Root<Class>, size: usize, align: usize) -> Root<()> {
@@ -79,18 +79,18 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
         });
-        let handle = Root::new(oref);
-        self.handles.push(handle.clone());
-        handle
+        let root = Root::new(oref);
+        self.roots.push(root.clone());
+        root
     }
 
     unsafe fn gc(&mut self) {
         let mut greys: Vec<Gc<()>> = Vec::new(); // explicit mark stack to avoid stack overflow
 
-        self.handles.retain(|handle| Arc::strong_count(&handle.0) > 1);
-        for handle in self.handles.iter_mut() {
-            *handle.0.get() = self.heap
-                .mark_root(&mut greys, (*handle.0.get()).into()).unchecked_downcast();
+        self.roots.retain(|root| Rc::strong_count(&root.0) > 1);
+        for root in self.roots.iter_mut() {
+            root.0.set(self.heap
+                .mark_root(&mut greys, root.0.get().into()).unchecked_downcast());
         }
         self.type_class = self.heap.mark_root(&mut greys, self.type_class.into()).unchecked_downcast();
         self.int_class = self.heap.mark_root(&mut greys, self.int_class.into()).unchecked_downcast();

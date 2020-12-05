@@ -7,10 +7,10 @@ pub struct Int(isize);
 
 impl Int {
     pub unsafe fn new(km: &mut KyyMutator, n: isize) -> Root<Int> {
-        let handle: Root<()> = km.alloc_bytes(Int::reify(km), size_of::<Int>(), align_of::<Int>());
-        let handle: Root<Int> = handle.unchecked_downcast();
-        handle.as_mut_ptr().write(Int(n));
-        handle
+        let root: Root<()> = km.alloc_bytes(Int::reify(km), size_of::<Int>(), align_of::<Int>());
+        let root: Root<Int> = root.unchecked_downcast();
+        root.as_mut_ptr().write(Int(n));
+        root
     }
 }
 
