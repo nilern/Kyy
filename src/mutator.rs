@@ -29,11 +29,24 @@ pub struct Class {}
 
 // ---
 
-pub trait KyyType {
+pub unsafe trait KyyType {
     fn reify(km: &KyyMutator) -> Root<Class>;
 }
 
-impl KyyType for Int {
+pub unsafe trait KyyBytesType: KyyType {
+    unsafe fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> where Self: Sized {
+        let root: Root<()> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
+        let root: Root<Self> = root.unchecked_downcast();
+        root.as_mut_ptr().write(contents);
+        root
+    }
+}
+
+unsafe impl KyyType for Class {
+    fn reify(km: &KyyMutator) -> Root<Class> { Root::new(km.type_class) }
+}
+
+unsafe impl KyyType for Int {
     fn reify(km: &KyyMutator) -> Root<Class> { Root::new(km.int_class) }
 }
 
