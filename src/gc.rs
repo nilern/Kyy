@@ -75,23 +75,22 @@ impl<T> Gc<T> {
     /// Safety: The returned reference must not be live across a safepoint.
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
+    /// Safety: The returned pointer must not be live across a safepoint.
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
 
-    pub fn header<'a>(&'a self) -> &'a Header {
-        unsafe {
-            let ptr = self.0.as_ref() as *const T;
-            transmute((ptr as *const Header).offset(-1))
-        }
+    /// Safety: The returned reference must not be live across a safepoint.
+    pub unsafe fn header<'a>(&'a self) -> &'a Header {
+        let ptr = self.0.as_ref() as *const T;
+        transmute((ptr as *const Header).offset(-1))
     }
 
-    fn header_mut<'a>(&'a mut self) -> &'a mut Header {
-        unsafe {
-            let ptr = self.0.as_mut() as *mut T;
-            transmute((ptr as *mut Header).offset(-1))
-        }
+    /// Safety: The returned reference must not be live across a safepoint.
+    pub unsafe fn header_mut<'a>(&'a mut self) -> &'a mut Header {
+        let ptr = self.0.as_mut() as *mut T;
+        transmute((ptr as *mut Header).offset(-1))
     }
 
-    fn is_marked(self) -> bool { self.header().is_marked() }
+    fn is_marked(self) -> bool { unsafe { self.header().is_marked() } }
 
     pub unsafe fn mark(mut self, heap: &mut Heap) -> Gc<T> {
         if !self.is_marked() {
@@ -100,8 +99,6 @@ impl<T> Gc<T> {
         }
         self // non-moving GC ATM; returned for forwards compatibility
     }
-
-    pub fn set_class(&mut self, class: ORef) { self.header_mut().class = class }
 }
 
 // ---
@@ -206,6 +203,8 @@ impl Header {
     fn mark(&mut self) { self.heading.mark(); }
 
     fn is_marked(&self) -> bool { self.heading.is_marked() }
+
+    pub fn class_mut(&mut self) -> &mut ORef { &mut self.class }
 
     fn slots_mut(&mut self) -> Option<&mut [ORef]> {
         if self.heading.is_bytes() {
@@ -446,7 +445,7 @@ mod tests {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = 1 << 7;
         let obj: Gc<()> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
-        let header = obj.header();
+        let header = unsafe { obj.header() };
         assert_eq!(header.gsize(), GSize::of::<Header>() + GSize(len));
         assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
         assert!(!header.is_bytes());
@@ -459,7 +458,7 @@ mod tests {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = (1 << 10) + 3;
         let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
-        let header = obj.header();
+        let header = unsafe { obj.header() };
         assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::in_granules(len).unwrap());
         assert_eq!(header.size(), size_of::<Header>() + len);
         assert!(header.is_bytes());
@@ -476,18 +475,22 @@ mod tests {
         loop {
             if size % 3 == 0 {
                 if let Some(obj) = unsafe { heap.alloc_bytes(ORef::NULL, size, align_of::<f64>()) } {
-                    assert_eq!(obj.header().size(), size_of::<Header>() + size);
-                    assert!(obj.header().is_bytes());
-                    assert!(!obj.header().is_marked());
+                    unsafe { 
+                        assert_eq!(obj.header().size(), size_of::<Header>() + size);
+                        assert!(obj.header().is_bytes());
+                        assert!(!obj.header().is_marked());
+                    }
                 } else {
                     break;
                 }
             } else {
                 let len = GSize::in_granules(size).unwrap().0;
                 if let Some(obj) = unsafe { heap.alloc_slots(ORef::NULL, len) } {
-                    assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));
-                    assert!(!obj.header().is_bytes());
-                    assert!(!obj.header().is_marked());
+                    unsafe { 
+                        assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));
+                        assert!(!obj.header().is_bytes());
+                        assert!(!obj.header().is_marked());
+                    }
                 } else {
                     break;
                 }

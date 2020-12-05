@@ -20,6 +20,7 @@ impl<T> Root<T> {
     /// Safety: The returned pointer must not be live across a safepoint.
     pub unsafe fn as_mut_ptr(&self) -> *mut T { self.0.get().as_mut_ptr() }
 
+    /// Safety: The returned oref must not be live across a safepoint.
     pub unsafe fn oref(&self) -> Gc<T> { self.0.get() }
 
     unsafe fn mark(&self, heap: &mut Heap) {
@@ -87,7 +88,7 @@ impl KyyMutator {
         unsafe {
             let mut type_typ: Gc<Type> = heap.alloc_bytes(ORef::NULL, size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
-            type_typ.set_class(type_typ.into());
+            *type_typ.header_mut().class_mut() = type_typ.into();
             let int_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
             let tuple_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
