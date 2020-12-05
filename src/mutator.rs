@@ -6,12 +6,12 @@ use super::gc::{self, ORef, Gc};
 use super::int::Int;
 
 #[derive(Debug, Clone)]
-pub struct Handle<T>(Arc<UnsafeCell<Gc<T>>>);
+pub struct Root<T>(Arc<UnsafeCell<Gc<T>>>);
 
-impl<T> Handle<T> {
-    fn new(oref: Gc<T>) -> Handle<T> { Handle(Arc::new(UnsafeCell::new(oref))) }
+impl<T> Root<T> {
+    fn new(oref: Gc<T>) -> Root<T> { Root(Arc::new(UnsafeCell::new(oref))) }
 
-    pub unsafe fn unchecked_downcast<U>(self) -> Handle<U> { transmute(self) }
+    pub unsafe fn unchecked_downcast<U>(self) -> Root<U> { transmute(self) }
 
     /// Safety: The returned reference must not be live across a safepoint.
     pub unsafe fn as_ref(&self) -> &T { (*self.0.get()).as_ref() }
@@ -30,24 +30,24 @@ pub struct Class {}
 // ---
 
 pub trait KyyType {
-    fn reify(st: &KyyState) -> Handle<Class>;
+    fn reify(km: &KyyMutator) -> Root<Class>;
 }
 
 impl KyyType for Int {
-    fn reify(st: &KyyState) -> Handle<Class> { Handle::new(st.int_class) }
+    fn reify(km: &KyyMutator) -> Root<Class> { Root::new(km.int_class) }
 }
 
 // ---
 
-pub struct KyyState {
+pub struct KyyMutator {
     heap: gc::Heap,
-    handles: Vec<Handle<()>>,
+    handles: Vec<Root<()>>,
     type_class: Gc<Class>,
     int_class: Gc<Class>
 }
 
-impl KyyState {
-    pub fn new(max_heap_size: usize) -> Option<KyyState> {
+impl KyyMutator {
+    pub fn new(max_heap_size: usize) -> Option<KyyMutator> {
         let mut heap = gc::Heap::new(max_heap_size)?;
         unsafe {
             let mut type_class: Gc<Class> = heap.alloc_bytes(ORef::NULL, size_of::<Class>(), align_of::<Class>())?
@@ -55,7 +55,7 @@ impl KyyState {
             type_class.set_class(type_class.into());
             let int_class: Gc<Class> = heap.alloc_bytes(type_class.into(), size_of::<Class>(), align_of::<Class>())?
                 .unchecked_downcast();
-            Some(KyyState {
+            Some(KyyMutator {
                 heap,
                 handles: Vec::new(),
                 type_class,
@@ -64,22 +64,22 @@ impl KyyState {
         }
     }
 
-    pub unsafe fn alloc_slots(&mut self, class: Handle<Class>, len: usize) -> Handle<()> {
+    pub unsafe fn alloc_slots(&mut self, class: Root<Class>, len: usize) -> Root<()> {
         let oref = self.heap.alloc_slots(class.oref().into(), len).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
         });
-        let handle = Handle::new(oref);
+        let handle = Root::new(oref);
         self.handles.push(handle.clone());
         handle
     }
 
-    pub unsafe fn alloc_bytes(&mut self, class: Handle<Class>, size: usize, align: usize) -> Handle<()> {
+    pub unsafe fn alloc_bytes(&mut self, class: Root<Class>, size: usize, align: usize) -> Root<()> {
         let oref = self.heap.alloc_bytes(class.oref().into(), size, align).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
         });
-        let handle = Handle::new(oref);
+        let handle = Root::new(oref);
         self.handles.push(handle.clone());
         handle
     }
@@ -108,7 +108,7 @@ mod tests {
 /*
     #[test]
     fn alloc() {
-        let mut state = KyyState::new(100).unwrap();
+        let mut state = KyyMutator::new(100).unwrap();
         unsafe {
             state.alloc_slots(ORef::NULL, 5);
             state.alloc_bytes(ORef::NULL, 8, 8);
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn collect() {
-        let mut state = KyyState::new(10*size_of::<usize>()).unwrap();
+        let mut state = KyyMutator::new(10*size_of::<usize>()).unwrap();
         unsafe {
             state.alloc_slots(ORef::NULL, 5);
             state.alloc_slots(ORef::NULL, 5);
