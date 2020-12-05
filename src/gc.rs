@@ -101,18 +101,18 @@ impl<T> Gc<T> {
 
 // ---
 
-// Can be null and cannot be deref'd, unlike Gc<T>
+// Can be null, unlike Gc<T>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ORef(usize);
+pub struct ORef(*mut ());
 
 impl ORef {
-    pub const NULL: ORef = ORef(0);
+    pub const NULL: ORef = ORef(ptr::null_mut());
 
-    fn is_null(self) -> bool { self.0 == 0 }
+    fn is_null(self) -> bool { self.0 == ptr::null_mut() }
 
     pub unsafe fn unchecked_downcast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
 
-    fn as_ptr(self) -> Option<NonNull<()>> { NonNull::new(self.0 as *mut ()) }
+    fn as_ptr(self) -> Option<NonNull<()>> { NonNull::new(self.0) }
 }
 
 impl TryFrom<ORef> for Gc<()> {
@@ -124,7 +124,7 @@ impl TryFrom<ORef> for Gc<()> {
 }
 
 impl<T> From<Gc<T>> for ORef {
-    fn from(obj: Gc<T>) -> ORef { unsafe { ORef(transmute(obj.0.as_ref())) } }
+    fn from(mut obj: Gc<T>) -> ORef { unsafe { ORef(obj.0.as_mut() as *mut T as _) } }
 }
 
 // ---
