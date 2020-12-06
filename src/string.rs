@@ -4,6 +4,7 @@ use std::str;
 
 use super::gc::Header;
 use super::mutator::{KyyMutator, KyyType, Root};
+use super::object::Object;
 
 #[repr(C)]
 pub struct String;
@@ -11,7 +12,7 @@ pub struct String;
 impl String {
     pub fn new(km: &mut KyyMutator, cs: &str) -> Root<String> {
         unsafe {
-            let root: Root<()> = km.alloc_bytes(Self::reify(km), cs.len(), align_of::<u8>());
+            let root: Root<Object> = km.alloc_bytes(Self::reify(km), cs.len(), align_of::<u8>());
             let root: Root<Self> = root.unchecked_cast();
             let contents: &mut [u8] = slice::from_raw_parts_mut(
                 root.as_mut_ptr() as *mut u8, cs.len());

@@ -3,6 +3,7 @@ use std::cell::Cell;
 use std::mem::{size_of, align_of, transmute};
 
 use super::gc::{self, ORef, Gc, Header, Heap};
+use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
@@ -48,11 +49,11 @@ pub unsafe trait KyyType: Sized {
         transmute(Gc::from_raw(transmute::<&Self, *mut Self>(self)).header())
     }
 
-    fn isa(km: &KyyMutator, root: Root<()>) -> bool {
-        unsafe { root.oref().unchecked_cast::<()>().class().is(Self::reify(km).oref().into()) }
+    fn isa(km: &KyyMutator, root: Root<Object>) -> bool {
+        unsafe { root.oref().unchecked_cast::<Object>().class().is(Self::reify(km).oref().into()) }
     }
 
-    fn downcast(km: &KyyMutator, root: Root<()>) -> Option<Root<Self>> {
+    fn downcast(km: &KyyMutator, root: Root<Object>) -> Option<Root<Self>> {
         if Self::isa(km, root.clone()) {
             Some(unsafe { root.unchecked_cast() })
         } else {
@@ -64,7 +65,7 @@ pub unsafe trait KyyType: Sized {
 pub unsafe trait KyySizedBytesType: KyyType {
     fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> {
         unsafe {
-            let root: Root<()> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
+            let root: Root<Object> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
             let root: Root<Self> = root.unchecked_cast();
             root.as_mut_ptr().write(contents);
             root
@@ -75,6 +76,7 @@ pub unsafe trait KyySizedBytesType: KyyType {
 #[derive(Clone, Copy)]
 struct BuiltinTypes {
     type_typ: Gc<Type>,
+    object_typ: Gc<Type>,
     int_typ: Gc<Type>,
     bool_typ: Gc<Type>,
     tuple_typ: Gc<Type>,
@@ -90,6 +92,7 @@ macro_rules! impl_kyy_type {
 }
 
 impl_kyy_type!(Type, type_typ);
+impl_kyy_type!(Object, object_typ);
 impl_kyy_type!(Int, int_typ);
 impl_kyy_type!(Bool, bool_typ);
 impl_kyy_type!(Tuple, tuple_typ);
@@ -99,7 +102,7 @@ impl_kyy_type!(String, string_typ);
 
 pub struct KyyMutator {
     heap: gc::Heap,
-    roots: Vec<Root<()>>,
+    roots: Vec<Root<Object>>,
     types: BuiltinTypes,
     singletons: Singletons
 }
@@ -117,6 +120,8 @@ impl KyyMutator {
             let mut type_typ: Gc<Type> = heap.alloc_bytes(ORef::NULL, size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
             *type_typ.header_mut().class_mut() = type_typ.into();
+            let object_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
             let int_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
             let bool_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
@@ -140,13 +145,13 @@ impl KyyMutator {
             Some(KyyMutator {
                 heap,
                 roots,
-                types: BuiltinTypes {type_typ, int_typ, bool_typ, tuple_typ, string_typ},
+                types: BuiltinTypes {type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ},
                 singletons: Singletons {tru, fals}
             })
         }
     }
 
-    pub unsafe fn alloc_slots(&mut self, class: Root<Type>, len: usize) -> Root<()> {
+    pub unsafe fn alloc_slots(&mut self, class: Root<Type>, len: usize) -> Root<Object> {
         let oref = self.heap.alloc_slots(class.oref().into(), len).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
@@ -156,7 +161,7 @@ impl KyyMutator {
         root
     }
 
-    pub unsafe fn alloc_bytes(&mut self, class: Root<Type>, size: usize, align: usize) -> Root<()> {
+    pub unsafe fn alloc_bytes(&mut self, class: Root<Type>, size: usize, align: usize) -> Root<Object> {
         let oref = self.heap.alloc_bytes(class.oref().into(), size, align).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
@@ -176,9 +181,10 @@ impl KyyMutator {
             root.mark(&mut self.heap);
         }
 
-        let BuiltinTypes {ref mut type_typ, ref mut int_typ, ref mut bool_typ, ref mut tuple_typ, ref mut string_typ} =
+        let BuiltinTypes {ref mut type_typ, ref mut object_typ,
+            ref mut int_typ, ref mut bool_typ, ref mut tuple_typ, ref mut string_typ} =
             self.types;
-        for typ in [type_typ, int_typ, bool_typ, tuple_typ, string_typ].iter_mut() {
+        for typ in [type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ].iter_mut() {
             **typ = typ.mark(&mut self.heap);
         }
 

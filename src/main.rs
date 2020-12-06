@@ -1,5 +1,6 @@
 mod gc;
 mod mutator;
+mod object;
 mod int;
 mod bool;
 mod tuple;

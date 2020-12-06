@@ -3,17 +3,18 @@ use std::slice;
 
 use super::gc::{GSize, Header, Gc};
 use super::mutator::{KyyType, KyyMutator, Root};
+use super::object::Object;
 
 #[repr(C)]
 pub struct Tuple;
 
 impl Tuple {
-    pub fn new(km: &mut KyyMutator, vs: &[Gc<()>]) -> Root<Tuple> {
+    pub fn new(km: &mut KyyMutator, vs: &[Gc<Object>]) -> Root<Tuple> {
         unsafe {
-            let root: Root<()> = km.alloc_slots(Self::reify(km), vs.len());
+            let root: Root<Object> = km.alloc_slots(Self::reify(km), vs.len());
             let root: Root<Self> = root.unchecked_cast();
-            let contents: &mut [Gc<()>] = slice::from_raw_parts_mut(
-                root.as_mut_ptr() as *mut Gc<()>, vs.len());
+            let contents: &mut [Gc<Object>] = slice::from_raw_parts_mut(
+                root.as_mut_ptr() as *mut Gc<Object>, vs.len());
             contents.copy_from_slice(vs);
             root
         }
@@ -24,7 +25,7 @@ impl Tuple {
     }
 
     /// Safety: the returned slice must not be live across a safepoint
-    pub unsafe fn slots(&self) -> &[Gc<()>] {
+    pub unsafe fn slots(&self) -> &[Gc<Object>] {
         slice::from_raw_parts(transmute(self), self.len())
     }
 }
@@ -33,6 +34,7 @@ impl Tuple {
 mod tests {
     use super::*;
 
+    use super::super::gc::ORef;
     use super::super::mutator::{KyyMutator, KyySizedBytesType};
     use super::super::int::Int;
 
@@ -40,13 +42,13 @@ mod tests {
     fn alloc() {
         let mut km = KyyMutator::new(1000).unwrap();
         let vs = [Int::new(&mut km, Int(3)), Int::new(&mut km, Int(2)), Int::new(&mut km, Int(1))];
-        let vs: Vec<Gc<()>> = vs.iter().map(|root| unsafe { root.oref().unchecked_cast() }).collect();
-        let tup = Tuple::new(&mut km, &vs);
+        let tvs: Vec<Gc<Object>> = vs.iter().map(|root| unsafe { root.oref().unchecked_cast() }).collect();
+        let tup = Tuple::new(&mut km, &tvs);
 
         unsafe {
             assert_eq!(tup.as_ref().len(), 3);
             for (tv, v) in tup.as_ref().slots().iter().zip(vs.iter()) {
-                assert_eq!(tv, v);
+                assert!(ORef::from(*tv).is(v.oref().into()));
             }
         }
     }

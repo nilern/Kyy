@@ -2,24 +2,25 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::mutator::{KyyMutator, KyyType, KyySizedBytesType, Root};
+use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::lexer::Spanning;
 use super::parser::{Expr, ExprRef, Stmt};
 
 pub enum Error {
-    TypeError(Vec<Root<()>>),
+    TypeError(Vec<Root<Object>>),
     Unbound(Arc<String>)
 }
 
 type EvalResult<T> = Result<T, Spanning<Error>>;
 
-type Env = HashMap<String, Root<()>>;
+type Env = HashMap<String, Root<Object>>;
 
 pub fn new_global_env() -> Env { HashMap::new() }
 
-fn arithmetic<F>(km: &mut KyyMutator, l: Root<()>, r: Root<()>, f: F)
-    -> Result<Root<()>, Error> where F: Fn(isize, isize) -> isize
+fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
+    -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> isize
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
@@ -30,8 +31,8 @@ fn arithmetic<F>(km: &mut KyyMutator, l: Root<()>, r: Root<()>, f: F)
     Err(Error::TypeError(vec![l, r]))
 }
 
-fn comparison<F>(km: &KyyMutator, l: Root<()>, r: Root<()>, f: F)
-    -> Result<Root<()>, Error> where F: Fn(isize, isize) -> bool
+fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
+    -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> bool
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
@@ -42,7 +43,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<()>, r: Root<()>, f: F)
     Err(Error::TypeError(vec![l, r]))
 } 
 
-pub fn eval(km: &mut KyyMutator, env: &Env, expr: &ExprRef) -> EvalResult<Root<()>> {
+pub fn eval(km: &mut KyyMutator, env: &Env, expr: &ExprRef) -> EvalResult<Root<Object>> {
     let res = match expr.value {
         Expr::Add(ref l, ref r) => {
             let l = eval(km, env, l)?;
@@ -106,7 +107,7 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: &ExprRef) -> EvalResult<Root<(
     res.map_err(|err| expr.here(err))
 }
 
-fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: &[Stmt]) -> EvalResult<Option<Root<()>>> {
+fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: &[Stmt]) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
     for stmt in stmts {
         res = exec(km, env, stmt)?;
@@ -114,7 +115,7 @@ fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: &[Stmt]) -> EvalResult<
     Ok(res)
 }
 
-pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: &Stmt) -> EvalResult<Option<Root<()>>> {
+pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: &Stmt) -> EvalResult<Option<Root<Object>>> {
     match stmt {
         Stmt::If {ref condition, ref conseq, ref alt} => {
             let cond = eval(km, env, condition)?;

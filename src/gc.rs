@@ -7,6 +7,8 @@ use std::ops::{Add, AddAssign, Sub};
 use std::ptr::{self, NonNull};
 use std::slice;
 
+use super::object::Object;
+
 // TODO: Python None = ptr::null?
 
 struct Granule(usize);
@@ -107,7 +109,7 @@ impl<T> Gc<T> {
 
 // Can be null, unlike Gc<T>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ORef(*mut ());
+pub struct ORef(*mut Object);
 
 impl ORef {
     pub const NULL: ORef = ORef(ptr::null_mut());
@@ -127,10 +129,10 @@ impl ORef {
     pub fn is(self, other: ORef) -> bool { ptr::eq(self.0, other.0) }
 }
 
-impl TryFrom<ORef> for Gc<()> {
+impl TryFrom<ORef> for Gc<Object> {
     type Error = ();
 
-    fn try_from(oref: ORef) -> Result<Gc<()>, ()> {
+    fn try_from(oref: ORef) -> Result<Gc<Object>, ()> {
         if !oref.is_null() { unsafe{ Ok(oref.unchecked_cast()) } } else { Err(()) }
     }
 }
@@ -254,7 +256,7 @@ pub struct Heap {
     start: *mut Header,
     end: *mut Header,
     free: FreeList,
-    greys: Vec<Gc<()>>
+    greys: Vec<Gc<Object>>
 }
 
 impl Drop for Heap {
@@ -292,7 +294,7 @@ impl Heap {
 
     fn size(&self) -> usize { self.end as usize - self.start as usize }
 
-    unsafe fn alloc(&mut self, heading: Heading, class: ORef, size: usize, align: usize) -> Option<Gc<()>> {
+    unsafe fn alloc(&mut self, heading: Heading, class: ORef, size: usize, align: usize) -> Option<Gc<Object>> {
         debug_assert!(heading.size() == size_of::<Header>() + size);
         debug_assert!(align.is_power_of_two());
         debug_assert!(heading.is_bytes() || align == align_of::<Granule>());
@@ -321,7 +323,7 @@ impl Heap {
                         }
 
                         *(header_addr as *mut Header) = Header {heading, class};
-                        return Some(Gc::from_raw(obj_addr as *mut ()));
+                        return Some(Gc::from_raw(obj_addr as *mut Object));
                     }
                 }
             }
@@ -330,12 +332,12 @@ impl Heap {
         }
     }
 
-    pub unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<()>> {
+    pub unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<Object>> {
         let gsize = GSize::from(len);
         self.alloc(Heading::slots(gsize), class, gsize.in_bytes(), align_of::<Granule>())
     }
 
-    pub unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<()>> {
+    pub unsafe fn alloc_bytes(&mut self, class: ORef, len: usize, align: usize) -> Option<Gc<Object>> {
         self.alloc(Heading::bytes(len), class, len, align)
     }
 
@@ -428,11 +430,11 @@ mod tests {
         assert_eq!(size_of::<Granule>(), size_of::<usize>()); // granule is "word"-sized
 
         // Object references are granule-sized:
-        assert_eq!(size_of::<Gc<()>>(), size_of::<Granule>());
+        assert_eq!(size_of::<Gc<Object>>(), size_of::<Granule>());
         assert_eq!(size_of::<ORef>(), size_of::<Granule>());
 
         // Gc<T> has null-pointer optimization:
-        assert_eq!(size_of::<Option<Gc<()>>>(), size_of::<Granule>());
+        assert_eq!(size_of::<Option<Gc<Object>>>(), size_of::<Granule>());
 
         // Header/free list node is two granules:
         assert_eq!(size_of::<Header>(), 2*size_of::<Granule>());
@@ -450,7 +452,7 @@ mod tests {
     fn alloc_slots() {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = 1 << 7;
-        let obj: Gc<()> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
+        let obj: Gc<Object> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
         let header = unsafe { obj.header() };
         assert_eq!(header.gsize(), GSize::of::<Header>() + GSize(len));
         assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
@@ -463,7 +465,7 @@ mod tests {
     fn alloc_bytes() {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = (1 << 10) + 3;
-        let obj: Gc<()> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
+        let obj: Gc<Object> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
         let header = unsafe { obj.header() };
         assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::in_granules(len).unwrap());
         assert_eq!(header.size(), size_of::<Header>() + len);
