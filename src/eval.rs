@@ -7,7 +7,7 @@ use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::lexer::Spanning;
-use super::parser::{Expr, ExprRef, Stmt};
+use super::ast::{Expr, ExprRef, Stmt};
 
 pub enum Error {
     TypeError(Vec<Root<Object>>),

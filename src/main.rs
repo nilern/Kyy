@@ -7,6 +7,7 @@ mod int;
 mod bool;
 mod tuple;
 mod string;
+mod ast;
 mod lexer;
 mod parser;
 mod eval;
