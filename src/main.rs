@@ -1,4 +1,5 @@
 mod orefs;
+mod granule;
 mod gc;
 mod mutator;
 mod object;

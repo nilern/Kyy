@@ -2,57 +2,14 @@ use intrusive_collections::{intrusive_adapter, SinglyLinkedListLink, UnsafeRef, 
 use intrusive_collections::singly_linked_list;
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::mem::{transmute, size_of, align_of};
-use std::ops::{Add, AddAssign, Sub};
 use std::ptr::{self, NonNull};
 use std::slice;
 
 use super::orefs::{Gc, ORef};
 use super::object::Object;
+use super::granule::{Granule, GSize};
 
 // TODO: Python None = ptr::null?
-
-struct Granule(usize);
-
-// ---
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GSize(usize);
-
-impl From<usize> for GSize {
-    fn from(n: usize) -> GSize { GSize(n) }
-}
-
-impl From<GSize> for usize {
-    fn from(n: GSize) -> usize { n.0 }
-}
-
-impl Add for GSize {
-    type Output = Self;
-
-    fn add(self, other: Self) -> GSize { GSize(self.0 + other.0) }
-}
-
-impl AddAssign for GSize {
-    fn add_assign(&mut self, other: Self) { *self = *self + other }
-}
-
-impl Sub for GSize {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> GSize { GSize(self.0 - other.0) }
-}
-
-impl GSize {
-    fn in_granules(size: usize) -> Option<GSize> {
-        Some(GSize(size.checked_add(size_of::<Granule>() - 1)? / size_of::<Granule>()))
-    }
-
-    pub fn of<T>() -> GSize {
-        GSize((size_of::<T>() + size_of::<Granule>() - 1) / size_of::<Granule>())
-    }
-
-    fn in_bytes(self) -> usize { self.0 * size_of::<Granule>() }
-}
 
 impl<T> Gc<T> {
     pub unsafe fn mark(mut self, heap: &mut Heap) -> Gc<T> {
@@ -83,7 +40,7 @@ impl Heading {
 
     fn slots(gsize: GSize) -> Heading {
         let gsize = gsize + GSize::of::<Header>();
-        Heading(gsize.0 << TAG_BITCOUNT)
+        Heading(usize::from(gsize) << TAG_BITCOUNT)
     }
 
     fn filler(size: usize) -> Heading { Heading(size << TAG_BITCOUNT | BYTES_BIT) }
@@ -144,7 +101,7 @@ impl Header {
             Some(unsafe {
                 slice::from_raw_parts_mut(
                     (self as *mut Header).add(1) as *mut ORef,
-                    self.heading.gsize().0
+                    self.heading.gsize().into()
                 )
             })
         }
@@ -194,7 +151,7 @@ impl Drop for Heap {
 impl Heap {
     pub fn new(max_size: usize) -> Option<Heap> {
         unsafe {
-            let max_gsize = GSize(max_size / size_of::<Granule>());
+            let max_gsize = GSize::from(max_size / size_of::<Granule>());
             let max_size = max_gsize.in_bytes(); // rounded down, unlike `GSize::in_granules`
             let start = alloc_zeroed(Layout::from_size_align_unchecked(max_size, align_of::<Granule>()));
             if !start.is_null() {
@@ -333,7 +290,7 @@ impl Iterator for Headings {
         if self.scan < self.end {
             unsafe {
                 let obj = NonNull::new_unchecked(self.scan);
-                self.scan = self.scan.add((*self.scan).gsize().0);
+                self.scan = self.scan.add((*self.scan).gsize().into());
                 Some(obj)
             }
         } else {
@@ -377,7 +334,7 @@ mod tests {
         let len = 1 << 7;
         let obj: Gc<Object> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
         let header = unsafe { obj.header() };
-        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize(len));
+        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::from(len));
         assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
         assert!(!header.is_bytes());
         assert!(!header.is_marked());
@@ -415,7 +372,7 @@ mod tests {
                     break;
                 }
             } else {
-                let len = GSize::in_granules(size).unwrap().0;
+                let len = GSize::in_granules(size).unwrap().into();
                 if let Some(obj) = unsafe { heap.alloc_slots(ORef::NULL, len) } {
                     unsafe { 
                         assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));

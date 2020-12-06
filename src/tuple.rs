@@ -2,9 +2,10 @@ use std::mem::transmute;
 use std::slice;
 
 use super::orefs::{Gc, Root};
-use super::gc::{GSize, Header};
+use super::gc::Header;
 use super::mutator::{KyyType, KyyMutator};
 use super::object::Object;
+use super::granule::GSize;
 
 #[repr(C)]
 pub struct Tuple;
