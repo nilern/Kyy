@@ -168,7 +168,6 @@ impl KyyMutator {
 
     pub fn the_true(&self) -> Root<Bool> { self.singletons.tru.clone() }
     pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
-    pub fn bool(&self, b: bool) -> Root<Bool> { if b { self.the_true() } else { self.the_false() } }
 
     unsafe fn gc(&mut self) {
         self.roots.retain(|root| Rc::strong_count(&root.0) > 1);

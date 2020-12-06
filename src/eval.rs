@@ -35,7 +35,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<()>, r: Root<()>, f: F)
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
-            return Ok(unsafe {km.bool(f(l.into(), r.into())).unchecked_cast() });
+            return Ok(unsafe { Bool::new(km, f(l.into(), r.into())).unchecked_cast() });
         }
     }
 
@@ -132,8 +132,7 @@ pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: &Stmt) -> EvalResult<Optio
                     exec_block(km, env, alt)
                 }
             } else {
-                // FIXME
-                exec_block(km, env, conseq)
+                todo!()
             }
         },
 
