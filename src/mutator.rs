@@ -4,10 +4,14 @@ use std::mem::{size_of, align_of, transmute};
 
 use super::gc::{self, ORef, Gc, Header, Heap};
 use super::int::Int;
+use super::bool::Bool;
 use super::tuple::Tuple;
 
-#[derive(Debug, Clone)]
 pub struct Root<T>(Rc<Cell<Gc<T>>>);
+
+impl<T> Clone for Root<T> {
+    fn clone(&self) -> Root<T> { Root(self.0.clone()) }
+}
 
 impl<T> Root<T> {
     fn new(oref: Gc<T>) -> Root<T> { Root(Rc::new(Cell::new(oref))) }
@@ -59,6 +63,7 @@ pub unsafe trait KyyBytesType: KyyType {
 struct BuiltinTypes {
     type_typ: Gc<Type>,
     int_typ: Gc<Type>,
+    bool_typ: Gc<Type>,
     tuple_typ: Gc<Type>
 }
 
@@ -72,6 +77,7 @@ macro_rules! impl_kyy_type {
 
 impl_kyy_type!(Type, type_typ);
 impl_kyy_type!(Int, int_typ);
+impl_kyy_type!(Bool, bool_typ);
 impl_kyy_type!(Tuple, tuple_typ);
 
 // ---
@@ -79,24 +85,46 @@ impl_kyy_type!(Tuple, tuple_typ);
 pub struct KyyMutator {
     heap: gc::Heap,
     roots: Vec<Root<()>>,
-    types: BuiltinTypes
+    types: BuiltinTypes,
+    singletons: Singletons
+}
+
+struct Singletons {
+    tru: Root<Bool>,
+    fals: Root<Bool>
 }
 
 impl KyyMutator {
     pub fn new(max_heap_size: usize) -> Option<KyyMutator> {
         let mut heap = gc::Heap::new(max_heap_size)?;
+        let mut roots = Vec::new();
         unsafe {
             let mut type_typ: Gc<Type> = heap.alloc_bytes(ORef::NULL, size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
             *type_typ.header_mut().class_mut() = type_typ.into();
             let int_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
+            let bool_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
             let tuple_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
+
+            let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
+                .unchecked_cast();
+            tru.as_mut_ptr().write(Bool(true));
+            let tru = Root::new(tru);
+            roots.push(tru.clone().unchecked_cast());
+            let mut fals: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
+                .unchecked_cast();
+            fals.as_mut_ptr().write(Bool(false));
+            let fals = Root::new(fals);
+            roots.push(fals.clone().unchecked_cast());
+
             Some(KyyMutator {
                 heap,
-                roots: Vec::new(),
-                types: BuiltinTypes {type_typ, int_typ, tuple_typ}
+                roots,
+                types: BuiltinTypes {type_typ, int_typ, bool_typ, tuple_typ},
+                singletons: Singletons {tru, fals}
             })
         }
     }
@@ -121,14 +149,18 @@ impl KyyMutator {
         root
     }
 
+    pub fn the_true(&self) -> Root<Bool> { self.singletons.tru.clone() }
+    pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
+
     unsafe fn gc(&mut self) {
         self.roots.retain(|root| Rc::strong_count(&root.0) > 1);
 
         for root in self.roots.iter() {
             root.mark(&mut self.heap);
         }
-        let BuiltinTypes {ref mut type_typ, ref mut int_typ, ref mut tuple_typ} = self.types;
-        for typ in [type_typ, int_typ, tuple_typ].iter_mut() {
+
+        let BuiltinTypes {ref mut type_typ, ref mut int_typ, ref mut bool_typ, ref mut tuple_typ} = self.types;
+        for typ in [type_typ, int_typ, bool_typ, tuple_typ].iter_mut() {
             **typ = typ.mark(&mut self.heap);
         }
 
