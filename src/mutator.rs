@@ -1,5 +1,6 @@
 use std::mem::{size_of, align_of, transmute};
 
+use super::granule::GSize;
 use super::orefs::{ORef, Gc, Root};
 use super::gc::{self, Header};
 use super::object::Object;
@@ -32,6 +33,17 @@ pub unsafe trait KyyType: Sized {
             Some(unsafe { root.unchecked_cast() })
         } else {
             None
+        }
+    }
+}
+
+pub unsafe trait KyySizedSlotsType: KyyType {
+    fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> {
+        unsafe {
+            let root: Root<Object> = km.alloc_slots(Self::reify(km), GSize::of::<Self>().into());
+            let root: Root<Self> = root.unchecked_cast();
+            root.as_mut_ptr().write(contents);
+            root
         }
     }
 }
