@@ -3,6 +3,7 @@ mod mutator;
 mod int;
 mod bool;
 mod tuple;
+mod string;
 mod lexer;
 mod parser;
 mod eval;

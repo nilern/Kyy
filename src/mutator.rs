@@ -6,6 +6,7 @@ use super::gc::{self, ORef, Gc, Header, Heap};
 use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
+use super::string::String;
 
 pub struct Root<T>(Rc<Cell<Gc<T>>>);
 
@@ -64,7 +65,8 @@ struct BuiltinTypes {
     type_typ: Gc<Type>,
     int_typ: Gc<Type>,
     bool_typ: Gc<Type>,
-    tuple_typ: Gc<Type>
+    tuple_typ: Gc<Type>,
+    string_typ: Gc<Type>
 }
 
 macro_rules! impl_kyy_type {
@@ -79,6 +81,7 @@ impl_kyy_type!(Type, type_typ);
 impl_kyy_type!(Int, int_typ);
 impl_kyy_type!(Bool, bool_typ);
 impl_kyy_type!(Tuple, tuple_typ);
+impl_kyy_type!(String, string_typ);
 
 // ---
 
@@ -108,6 +111,8 @@ impl KyyMutator {
                 .unchecked_cast();
             let tuple_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
+            let string_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
 
             let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
@@ -123,7 +128,7 @@ impl KyyMutator {
             Some(KyyMutator {
                 heap,
                 roots,
-                types: BuiltinTypes {type_typ, int_typ, bool_typ, tuple_typ},
+                types: BuiltinTypes {type_typ, int_typ, bool_typ, tuple_typ, string_typ},
                 singletons: Singletons {tru, fals}
             })
         }
@@ -159,8 +164,9 @@ impl KyyMutator {
             root.mark(&mut self.heap);
         }
 
-        let BuiltinTypes {ref mut type_typ, ref mut int_typ, ref mut bool_typ, ref mut tuple_typ} = self.types;
-        for typ in [type_typ, int_typ, bool_typ, tuple_typ].iter_mut() {
+        let BuiltinTypes {ref mut type_typ, ref mut int_typ, ref mut bool_typ, ref mut tuple_typ, ref mut string_typ} =
+            self.types;
+        for typ in [type_typ, int_typ, bool_typ, tuple_typ, string_typ].iter_mut() {
             **typ = typ.mark(&mut self.heap);
         }
 
