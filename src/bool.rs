@@ -1,4 +1,5 @@
-use super::mutator::{KyyMutator, Root};
+use super::orefs::Root;
+use super::mutator::KyyMutator;
 
 #[repr(C)]
 pub struct Bool(pub bool);

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::mutator::{KyyMutator, KyyType, KyySizedBytesType, Root};
+use super::orefs::Root;
+use super::mutator::{KyyMutator, KyyType, KyySizedBytesType};
 use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;

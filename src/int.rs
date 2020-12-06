@@ -1,4 +1,5 @@
-use super::mutator::{KyySizedBytesType, KyyMutator, Root};
+use super::orefs::Root;
+use super::mutator::{KyySizedBytesType, KyyMutator};
 
 #[repr(C)]
 pub struct Int(pub isize);

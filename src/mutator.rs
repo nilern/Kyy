@@ -1,40 +1,12 @@
-use std::rc::Rc;
-use std::cell::Cell;
 use std::mem::{size_of, align_of, transmute};
 
-use super::gc::{self, ORef, Gc, Header, Heap};
+use super::orefs::{ORef, Gc, Root};
+use super::gc::{self, Header};
 use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
 use super::string::String;
-
-pub struct Root<T>(Rc<Cell<Gc<T>>>);
-
-impl<T> Clone for Root<T> {
-    fn clone(&self) -> Root<T> { Root(self.0.clone()) }
-}
-
-impl<T> Root<T> {
-    fn new(oref: Gc<T>) -> Root<T> { Root(Rc::new(Cell::new(oref))) }
-
-    pub fn as_obj(self) -> Root<Object> { unsafe { self.unchecked_cast() } }
-
-    pub unsafe fn unchecked_cast<U>(self) -> Root<U> { transmute(self) }
-
-    /// Safety: The returned reference must not be live across a safepoint.
-    pub unsafe fn as_ref<'a>(&'a self) -> &'a T { transmute(self.0.get().as_ref()) }
-
-    /// Safety: The returned pointer must not be live across a safepoint.
-    pub unsafe fn as_mut_ptr(&self) -> *mut T { self.0.get().as_mut_ptr() }
-
-    /// Safety: The returned oref must not be live across a safepoint.
-    pub unsafe fn oref(&self) -> Gc<T> { self.0.get() }
-
-    unsafe fn mark(&self, heap: &mut Heap) {
-        self.0.set(heap.mark_root(self.0.get().into()).unchecked_cast())
-    }
-}
 
 // ---
 
@@ -88,7 +60,7 @@ struct BuiltinTypes {
 macro_rules! impl_kyy_type {
     ($T: ty, $field: ident) => {
         unsafe impl KyyType for $T {
-            fn reify(km: &KyyMutator) -> Root<Type> { Root::new(km.types.$field) }
+            fn reify(km: &KyyMutator) -> Root<Type> { unsafe { Root::untracked(km.types.$field) } }
         }
     }
 }
@@ -136,12 +108,12 @@ impl KyyMutator {
             let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
             tru.as_mut_ptr().write(Bool(true));
-            let tru = Root::new(tru);
+            let tru = Root::untracked(tru);
             roots.push(tru.clone().unchecked_cast());
             let mut fals: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
             fals.as_mut_ptr().write(Bool(false));
-            let fals = Root::new(fals);
+            let fals = Root::untracked(fals);
             roots.push(fals.clone().unchecked_cast());
 
             Some(KyyMutator {
@@ -158,7 +130,7 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
         });
-        let root = Root::new(oref);
+        let root = Root::untracked(oref);
         self.roots.push(root.clone());
         root
     }
@@ -168,7 +140,7 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
         });
-        let root = Root::new(oref);
+        let root = Root::untracked(oref);
         self.roots.push(root.clone());
         root
     }
@@ -177,7 +149,7 @@ impl KyyMutator {
     pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
 
     unsafe fn gc(&mut self) {
-        self.roots.retain(|root| Rc::strong_count(&root.0) > 1);
+        self.roots.retain(|root| root.is_active());
 
         for root in self.roots.iter() {
             root.mark(&mut self.heap);

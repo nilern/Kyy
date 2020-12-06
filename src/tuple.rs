@@ -1,8 +1,9 @@
 use std::mem::transmute;
 use std::slice;
 
-use super::gc::{GSize, Header, Gc};
-use super::mutator::{KyyType, KyyMutator, Root};
+use super::orefs::{Gc, Root};
+use super::gc::{GSize, Header};
+use super::mutator::{KyyType, KyyMutator};
 use super::object::Object;
 
 #[repr(C)]
@@ -34,7 +35,7 @@ impl Tuple {
 mod tests {
     use super::*;
 
-    use super::super::gc::ORef;
+    use super::super::orefs::ORef;
     use super::super::mutator::{KyyMutator, KyySizedBytesType};
     use super::super::int::Int;
 

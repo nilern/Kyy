@@ -3,7 +3,8 @@ use std::slice;
 use std::str;
 
 use super::gc::Header;
-use super::mutator::{KyyMutator, KyyType, Root};
+use super::orefs::Root;
+use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 
 #[repr(C)]

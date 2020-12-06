@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use super::lexer::{self, Token, TokenTag, KyyLexer, Spanning, Located};
+use super::orefs::Root;
 use super::object::Object;
-use super::mutator::{Root, KyyMutator, KyySizedBytesType};
+use super::mutator::{KyyMutator, KyySizedBytesType};
 use super::int::Int;
 
 pub enum Expr {
