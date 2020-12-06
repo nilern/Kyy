@@ -33,7 +33,7 @@ impl Tuple {
 mod tests {
     use super::*;
 
-    use super::super::mutator::{KyyMutator, KyyBytesType};
+    use super::super::mutator::{KyyMutator, KyySizedBytesType};
     use super::super::int::Int;
 
     #[test]

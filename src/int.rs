@@ -1,9 +1,9 @@
-use super::mutator::{KyyBytesType, KyyMutator, Root};
+use super::mutator::{KyySizedBytesType, KyyMutator, Root};
 
 #[repr(C)]
 pub struct Int(pub isize);
 
-unsafe impl KyyBytesType for Int {}
+unsafe impl KyySizedBytesType for Int {}
 
 impl From<Root<Int>> for isize {
     fn from(hdl: Root<Int>) -> isize { unsafe { hdl.as_ref().0 } }

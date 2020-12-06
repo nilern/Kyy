@@ -1,9 +1,7 @@
-use super::mutator::{KyyBytesType, Root};
+use super::mutator::Root;
 
 #[repr(C)]
 pub struct Bool(pub bool);
-
-unsafe impl KyyBytesType for Bool {}
 
 impl From<Root<Bool>> for bool {
     fn from(b: Root<Bool>) -> bool { unsafe { b.as_ref().0 } }

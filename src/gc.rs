@@ -90,6 +90,8 @@ impl<T> Gc<T> {
         transmute((ptr as *mut Header).offset(-1))
     }
 
+    pub fn class(self) -> ORef { unsafe { self.header().class() } }
+
     fn is_marked(self) -> bool { unsafe { self.header().is_marked() } }
 
     pub unsafe fn mark(mut self, heap: &mut Heap) -> Gc<T> {
@@ -121,6 +123,8 @@ impl ORef {
             self
         }
     }
+
+    pub fn is(self, other: ORef) -> bool { ptr::eq(self.0, other.0) }
 }
 
 impl TryFrom<ORef> for Gc<()> {
@@ -203,6 +207,8 @@ impl Header {
     fn mark(&mut self) { self.heading.mark(); }
 
     fn is_marked(&self) -> bool { self.heading.is_marked() }
+
+    pub fn class(&self) -> ORef { self.class }
 
     pub fn class_mut(&mut self) -> &mut ORef { &mut self.class }
 

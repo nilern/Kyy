@@ -47,10 +47,22 @@ pub unsafe trait KyyType: Sized {
     unsafe fn header<'a>(&'a self) -> &'a Header {
         transmute(Gc::from_raw(transmute::<&Self, *mut Self>(self)).header())
     }
+
+    fn isa(km: &KyyMutator, root: Root<()>) -> bool {
+        unsafe { root.oref().unchecked_cast::<()>().class().is(Self::reify(km).oref().into()) }
+    }
+
+    fn downcast(km: &KyyMutator, root: Root<()>) -> Option<Root<Self>> {
+        if Self::isa(km, root.clone()) {
+            Some(unsafe { root.unchecked_cast() })
+        } else {
+            None
+        }
+    }
 }
 
-pub unsafe trait KyyBytesType: KyyType {
-    fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> where Self: Sized {
+pub unsafe trait KyySizedBytesType: KyyType {
+    fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> {
         unsafe {
             let root: Root<()> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
             let root: Root<Self> = root.unchecked_cast();
@@ -156,6 +168,7 @@ impl KyyMutator {
 
     pub fn the_true(&self) -> Root<Bool> { self.singletons.tru.clone() }
     pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
+    pub fn bool(&self, b: bool) -> Root<Bool> { if b { self.the_true() } else { self.the_false() } }
 
     unsafe fn gc(&mut self) {
         self.roots.retain(|root| Rc::strong_count(&root.0) > 1);
