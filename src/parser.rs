@@ -96,15 +96,15 @@ fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, E
         },
         Token::Integer(n) => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(unsafe { Int::new(km, Int(n)).unchecked_cast() }), tok.span)))
+            Ok(Box::new(tokens.spanning(Expr::Const(Int::new(km, Int(n)).as_obj()), tok.span)))
         },
         Token::True => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(unsafe { km.the_true().unchecked_cast() }), tok.span)))
+            Ok(Box::new(tokens.spanning(Expr::Const(km.the_true().as_obj()), tok.span)))
         },
         Token::False => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(unsafe { km.the_false().unchecked_cast() }), tok.span)))
+            Ok(Box::new(tokens.spanning(Expr::Const(km.the_false().as_obj()), tok.span)))
         },
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     }

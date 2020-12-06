@@ -42,7 +42,7 @@ mod tests {
     fn alloc() {
         let mut km = KyyMutator::new(1000).unwrap();
         let vs = [Int::new(&mut km, Int(3)), Int::new(&mut km, Int(2)), Int::new(&mut km, Int(1))];
-        let tvs: Vec<Gc<Object>> = vs.iter().map(|root| unsafe { root.oref().unchecked_cast() }).collect();
+        let tvs: Vec<Gc<Object>> = vs.iter().map(|root| unsafe { root.oref().as_obj() }).collect();
         let tup = Tuple::new(&mut km, &tvs);
 
         unsafe {

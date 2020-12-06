@@ -72,6 +72,8 @@ impl<T> PartialEq for Gc<T> {
 impl<T> Gc<T> {
     pub unsafe fn from_raw(raw: *mut T) -> Gc<T> { Gc(NonNull::new_unchecked(raw)) }
 
+    pub fn as_obj(self) -> Gc<Object> { unsafe { self.unchecked_cast() } }
+
     pub unsafe fn unchecked_cast<U>(self) -> Gc<U> { Gc(self.0.cast()) }
 
     /// Safety: The returned reference must not be live across a safepoint.
@@ -133,7 +135,7 @@ impl TryFrom<ORef> for Gc<Object> {
     type Error = ();
 
     fn try_from(oref: ORef) -> Result<Gc<Object>, ()> {
-        if !oref.is_null() { unsafe{ Ok(oref.unchecked_cast()) } } else { Err(()) }
+        if !oref.is_null() { unsafe { Ok(Gc::from_raw(oref.0)) } } else { Err(()) }
     }
 }
 

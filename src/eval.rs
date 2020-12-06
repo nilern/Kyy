@@ -24,7 +24,7 @@ fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
-            return Ok(unsafe { Int::new(km, Int(f(l.into(), r.into()))).unchecked_cast() });
+            return Ok(Int::new(km, Int(f(l.into(), r.into()))).as_obj());
         }
     }
 
@@ -36,7 +36,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
-            return Ok(unsafe { Bool::new(km, f(l.into(), r.into())).unchecked_cast() });
+            return Ok(Bool::new(km, f(l.into(), r.into())).as_obj());
         }
     }
 

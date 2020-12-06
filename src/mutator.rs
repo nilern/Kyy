@@ -18,6 +18,8 @@ impl<T> Clone for Root<T> {
 impl<T> Root<T> {
     fn new(oref: Gc<T>) -> Root<T> { Root(Rc::new(Cell::new(oref))) }
 
+    pub fn as_obj(self) -> Root<Object> { unsafe { self.unchecked_cast() } }
+
     pub unsafe fn unchecked_cast<U>(self) -> Root<U> { transmute(self) }
 
     /// Safety: The returned reference must not be live across a safepoint.
@@ -50,7 +52,7 @@ pub unsafe trait KyyType: Sized {
     }
 
     fn isa(km: &KyyMutator, root: Root<Object>) -> bool {
-        unsafe { root.oref().unchecked_cast::<Object>().class().is(Self::reify(km).oref().into()) }
+        unsafe { root.oref().as_obj().class().is(Self::reify(km).oref().into()) }
     }
 
     fn downcast(km: &KyyMutator, root: Root<Object>) -> Option<Root<Self>> {
