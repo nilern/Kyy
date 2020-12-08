@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use super::lexer::{self, Token, TokenTag, KyyLexer, Located};
-use super::ast::{Expr, ExprRef, Stmt};
+use super::ast;
 use super::mutator::{KyyMutator, KyySizedBytesType};
+use super::orefs::Root;
+use super::object::Object;
+use super::tuple::Tuple;
 use super::int::Int;
 
 // ---
@@ -58,7 +61,7 @@ fn token<'a>(tokens: &mut KyyLexer<'a>, tag: TokenTag) -> ParseResult<'a, Token<
 
 // ::= IDENTIFIER
 //   | INTEGER
-fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
+fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     match peek_some(tokens)? {
         Token::Identifier(chars) => {
             let tok = tokens.next().unwrap()?;
@@ -82,7 +85,7 @@ fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, E
 
 // ::= <multiplicative> ('*' | '/') <atom>
 //   | <atom>
-fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
+fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     let mut l = atom(km, tokens)?; // <atom>
     loop { // ((STAR | SLASH) <atom>)*
         match peek(tokens)? {
@@ -105,7 +108,7 @@ fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseRe
 
 // ::= <additive> ('+' | '-') <multiplicative>
 //   | <multiplicative>
-fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
+fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     let mut l = multiplicative(km, tokens)?; // <multiplicative>
     loop { // ((PLUS | MINUS) <multiplicative>)*
         match peek(tokens)? {
@@ -129,7 +132,7 @@ fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'
 // TODO: Chained comparisons (`a < b >= c` = `a < b and b >= c`)
 // ::= <comparison> ('<', '<=', '==', '!=', '>', '>=') <additive>
 //   | <additive>
-fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
+fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     let mut l = additive(km, tokens)?; // <additive>
     loop { // ((LT | LE | EQ | NE | GT | GE) <additive>)*
         match peek(tokens)? {
@@ -175,12 +178,12 @@ fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
 }
 
 // ::= <additive>
-fn expr<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, ExprRef> {
+fn expr<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     comparison(km, tokens)
 }
 
 // ::= NEWLINE INDENT <stmt>+ DEDENT
-fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Vec<Stmt>> {
+fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Tuple>> {
     token(tokens, TokenTag::Newline)?;
     token(tokens, TokenTag::Indent)?;
 
@@ -196,10 +199,10 @@ fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, 
 
     token(tokens, TokenTag::Dedent)?;
 
-    Ok(stmts)
+    Ok(Tuple::new(km, &stmts))
 }
 
-fn else_block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Vec<Stmt>> {
+fn else_block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Tuple>> {
     token(tokens, TokenTag::Else)?;
     token(tokens, TokenTag::Colon)?;
     block(km, tokens)
@@ -208,7 +211,7 @@ fn else_block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
 // ::= 'if' <expr> ':' <block> ('else' ':' <block>)?
 //   | VAR '=' <expr> NEWLINE
 //   | <expr> NEWLINE
-fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Stmt> {
+fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     let res = match peek_some(tokens)? {
         Token::If => { // IF
             let _ = tokens.next();
@@ -217,7 +220,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, S
             let conseq = block(km, tokens)?;
             let alt = match peek(tokens)? {
                 Some(Token::Else) => else_block(km, tokens)?,
-                _ => Vec::new()
+                _ => Tuple::new(km, &[])
             };
             return Ok(Stmt::If {condition, conseq, alt});
         },
@@ -243,7 +246,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, S
 }
 
 // ::= <stmt> EOF
-pub fn parse<'a>(km: &mut KyyMutator, mut lexer: KyyLexer<'a>) -> ParseResult<'a, Stmt> {
+pub fn parse<'a>(km: &mut KyyMutator, mut lexer: KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
     let stmt = stmt(km, &mut lexer)?;
     match peek(&mut lexer)? {
         None => Ok(stmt),

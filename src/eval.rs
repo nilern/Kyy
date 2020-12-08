@@ -6,8 +6,9 @@ use super::mutator::{KyyMutator, KyyType, KyySizedBytesType};
 use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
+use super::tuple::Tuple;
+use super::ast;
 use super::lexer::Spanning;
-use super::ast::{Expr, ExprRef, Stmt};
 
 pub enum Error {
     TypeError(Vec<Root<Object>>),
@@ -44,7 +45,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     Err(Error::TypeError(vec![l, r]))
 } 
 
-pub fn eval(km: &mut KyyMutator, env: &Env, expr: &ExprRef) -> EvalResult<Root<Object>> {
+pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Object>) -> EvalResult<Root<Object>> {
     let res = match expr.value {
         Expr::Add(ref l, ref r) => {
             let l = eval(km, env, l)?;
@@ -108,42 +109,44 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: &ExprRef) -> EvalResult<Root<O
     res.map_err(|err| expr.here(err))
 }
 
-fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: &[Stmt]) -> EvalResult<Option<Root<Object>>> {
+fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
-    for stmt in stmts {
-        res = exec(km, env, stmt)?;
+    for i in 0..stmts.as_ref().len() {
+        res = exec(km, env, km.root(stmts.as_ref().slots()[i]))?;
     }
     Ok(res)
 }
 
-pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: &Stmt) -> EvalResult<Option<Root<Object>>> {
-    match stmt {
-        Stmt::If {ref condition, ref conseq, ref alt} => {
-            let cond = eval(km, env, condition)?;
-            // HACK:
-            if let Some(b) = Bool::downcast(km, cond.clone()) {
-                if b.into() {
-                    exec_block(km, env, conseq)
-                } else {
-                    exec_block(km, env, alt)
-                }
-            } else if let Some(n) = Int::downcast(km, cond) {
-                if isize::from(n) != 0 {
-                    exec_block(km, env, conseq)
-                } else {
-                    exec_block(km, env, alt)
-                }
+pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Object>) -> EvalResult<Option<Root<Object>>> {
+    if let Some(ast::If {condition, conseq, alt}) = ast::If::downcast(km, stmt)
+        .map(|root| unsafe { *root.as_ref() })
+    {
+        let conseq = km.root(conseq);
+        let alt = km.root(alt);
+        let cond = eval(km, env, km.root(condition))?;
+        // HACK:
+        if let Some(b) = Bool::downcast(km, cond.clone()) {
+            if b.into() {
+                exec_block(km, env, conseq)
             } else {
-                todo!()
+                exec_block(km, env, alt)
             }
-        },
-
-        Stmt::Assign(ref var, ref rvalue) => {
-            env.insert(var.clone(), eval(km, env, rvalue)?);
-            Ok(None)
-        },
-
-        Stmt::Expr(ref expr) => eval(km, env, expr).map(Some)
+        } else if let Some(n) = Int::downcast(km, cond) {
+            if isize::from(n) != 0 {
+                exec_block(km, env, conseq)
+            } else {
+                exec_block(km, env, alt)
+            }
+        } else {
+            todo!()
+        }
+    } else if let Some(ast::Assign {left: var, right: rvalue}) = ast::Assign::downcast(km, stmt)
+        .map(|root| unsafe { *root.as_ref() })
+    {
+        env.insert(var.clone().as_ref().as_str().to_string(), eval(km, env, km.root(rvalue))?);
+        Ok(None)
+    } else {
+        eval(km, env, stmt).map(Some)
     }
 }
 

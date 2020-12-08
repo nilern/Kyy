@@ -2,35 +2,62 @@ use std::sync::Arc;
 
 use super::lexer::Spanning;
 use super::object::Object;
-use super::orefs::Root;
+use super::orefs::{Root, Gc};
+use super::mutator::KyySizedSlotsType;
+use super::string::String;
+use super::tuple::Tuple;
+use super::int::Int;
 
-pub enum Expr {
-    Add(ExprRef, ExprRef),
-    Sub(ExprRef, ExprRef),
-    Mul(ExprRef, ExprRef),
-    Div(ExprRef, ExprRef), // FIXME: __truediv__ vs. __floordiv__
+macro_rules! binary_node {
+    ($name: ident) => {
+        #[repr(C)]
+        pub struct $name {
+            filename: Gc<String>,
+            offset: Gc<Int>,
+            left: Gc<Object>,
+            right: Gc<Object>
+        }
 
-    Lt(ExprRef, ExprRef),
-    Le(ExprRef, ExprRef),
-    Eq(ExprRef, ExprRef),
-    Ne(ExprRef, ExprRef),
-    Gt(ExprRef, ExprRef),
-    Ge(ExprRef, ExprRef),
-
-    Var(Arc<String>),
-    Const(Root<Object>)
+        unsafe impl KyySizedSlotsType for $name {}
+    }
 }
 
-pub type ExprRef = Box<Spanning<Expr>>;
+binary_node!(Add);
+binary_node!(Sub);
+binary_node!(Mul);
+binary_node!(Div); // FIXME: __truediv__ vs. __floordiv__
 
-pub enum Stmt {
-    If {
-        condition: ExprRef,
-        conseq: Vec<Stmt>,
-        alt: Vec<Stmt>
-    },
+binary_node!(Le);
+binary_node!(Lt);
+binary_node!(Eq);
+binary_node!(Ne);
+binary_node!(Gt);
+binary_node!(Ge);
 
-    Assign(String, ExprRef),
-    Expr(ExprRef)
+#[repr(C)]
+pub struct Var(pub Gc<String>);
+
+unsafe impl KyySizedSlotsType for Var {}
+
+#[repr(C)]
+pub struct Const(pub Gc<Object>);
+
+unsafe impl KyySizedSlotsType for Const {}
+
+#[repr(C)]
+pub struct If {
+    condition: Gc<Object>,
+    conseq: Gc<Tuple>,
+    alt: Gc<Tuple>
 }
+
+unsafe impl KyySizedSlotsType for If {}
+
+#[repr(C)]
+pub struct Assign {
+    left: Gc<String>,
+    right: Gc<Object>,
+}
+
+unsafe impl KyySizedSlotsType for Assign {}
 

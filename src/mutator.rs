@@ -1,4 +1,5 @@
 use std::mem::{size_of, align_of, transmute};
+use std::slice;
 
 use super::granule::GSize;
 use super::orefs::{ORef, Gc, Root};
@@ -8,6 +9,7 @@ use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
 use super::string::String;
+use super::ast;
 
 // ---
 
@@ -66,7 +68,22 @@ struct BuiltinTypes {
     int_typ: Gc<Type>,
     bool_typ: Gc<Type>,
     tuple_typ: Gc<Type>,
-    string_typ: Gc<Type>
+    string_typ: Gc<Type>,
+
+    add_typ: Gc<Type>,
+    sub_typ: Gc<Type>,
+    mul_typ: Gc<Type>,
+    div_typ: Gc<Type>,
+    le_typ: Gc<Type>,
+    lt_typ: Gc<Type>,
+    eq_typ: Gc<Type>,
+    ne_typ: Gc<Type>,
+    gt_typ: Gc<Type>,
+    ge_typ: Gc<Type>,
+    var_typ: Gc<Type>,
+    const_typ: Gc<Type>,
+    if_typ: Gc<Type>,
+    assign_typ: Gc<Type>
 }
 
 macro_rules! impl_kyy_type {
@@ -83,6 +100,21 @@ impl_kyy_type!(Int, int_typ);
 impl_kyy_type!(Bool, bool_typ);
 impl_kyy_type!(Tuple, tuple_typ);
 impl_kyy_type!(String, string_typ);
+
+impl_kyy_type!(ast::Add, add_typ);
+impl_kyy_type!(ast::Sub, sub_typ);
+impl_kyy_type!(ast::Mul, mul_typ);
+impl_kyy_type!(ast::Div, div_typ);
+impl_kyy_type!(ast::Le, le_typ);
+impl_kyy_type!(ast::Lt, lt_typ);
+impl_kyy_type!(ast::Eq, eq_typ);
+impl_kyy_type!(ast::Ne, ne_typ);
+impl_kyy_type!(ast::Ge, ge_typ);
+impl_kyy_type!(ast::Gt, gt_typ);
+impl_kyy_type!(ast::Var, var_typ);
+impl_kyy_type!(ast::Const, const_typ);
+impl_kyy_type!(ast::If, if_typ);
+impl_kyy_type!(ast::Assign, assign_typ);
 
 // ---
 
@@ -117,6 +149,36 @@ impl KyyMutator {
             let string_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
                 .unchecked_cast();
 
+            let add_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let sub_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let mul_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let div_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+
+            let le_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let lt_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let eq_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let ne_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let ge_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let gt_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let var_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let const_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let if_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+            let assign_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+                .unchecked_cast();
+
             let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
             tru.as_mut_ptr().write(Bool(true));
@@ -131,7 +193,9 @@ impl KyyMutator {
             Some(KyyMutator {
                 heap,
                 roots,
-                types: BuiltinTypes {type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ},
+                types: BuiltinTypes {type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ,
+                    add_typ, sub_typ, mul_typ, div_typ, le_typ, lt_typ, eq_typ, ne_typ, ge_typ, gt_typ,
+                    var_typ, const_typ, if_typ, assign_typ},
                 singletons: Singletons {tru, fals}
             })
         }
@@ -142,9 +206,7 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
         });
-        let root = Root::untracked(oref);
-        self.roots.push(root.clone());
-        root
+        self.root(oref)
     }
 
     pub unsafe fn alloc_bytes(&mut self, class: Root<Type>, size: usize, align: usize) -> Root<Object> {
@@ -152,8 +214,12 @@ impl KyyMutator {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
         });
+        self.root(oref)
+    }
+
+    pub fn root<T>(&mut self, oref: Gc<T>) -> Root<T> {
         let root = Root::untracked(oref);
-        self.roots.push(root.clone());
+        self.roots.push(root.clone().as_obj());
         root
     }
 
@@ -167,11 +233,10 @@ impl KyyMutator {
             root.mark(&mut self.heap);
         }
 
-        let BuiltinTypes {ref mut type_typ, ref mut object_typ,
-            ref mut int_typ, ref mut bool_typ, ref mut tuple_typ, ref mut string_typ} =
-            self.types;
-        for typ in [type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ].iter_mut() {
-            **typ = typ.mark(&mut self.heap);
+        let builtin_types: &mut [Gc<Type>] = slice::from_raw_parts_mut(
+            transmute(&mut self.types), GSize::of::<BuiltinTypes>().into());
+        for typ in builtin_types.iter_mut() {
+            *typ = typ.mark(&mut self.heap);
         }
 
         self.heap.gc();
