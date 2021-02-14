@@ -89,7 +89,7 @@ INT = \d+
 and the main grammar that uses the token names:
 
 ```
-exps = expr (PLUS | MINUS) term
+expr = expr (PLUS | MINUS) term
      | term
 
 term = term (STAR | SLASH) atom

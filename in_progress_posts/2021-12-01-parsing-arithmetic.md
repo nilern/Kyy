@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "Parsing Arithmetic Expressions"
-date: 2020-12-01 20:50:00 +0200
+date: 2021-02-13 18:50:00 +0200
 tags: parsing LL recursive-descent
 ---
 
@@ -12,11 +12,11 @@ expressions into a syntax tree. I will be writing an LL(1) recursive descent
 parser by hand. CPython used LL(1) for a long time, although it had its own
 parser generator to handle the boilerplate. Nowadays that parser generator
 [uses PEG instead](https://docs.python.org/3/reference/grammar.html) but
-[Parr's
-book](https://www.amazon.com/gp/product/193435645X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=193435645X&linkId=2a158d853eecc599bed5cff5950cc0af)
-(affiliate link) from the previous post also showed me how to do backtracking
-and even Packrat parsing by hand if we ever have to go there. Handwritten
-parsers and parser combinators can also [incorporate
+[Parr's book (affiliate
+link)](https://www.amazon.com/gp/product/193435645X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=193435645X&linkId=2a158d853eecc599bed5cff5950cc0af)
+from the previous post also showed me how to do backtracking and even Packrat
+parsing by hand if we ever have to go there. Handwritten parsers and parser
+combinators can also [incorporate
 backtracking](https://hackage.haskell.org/package/parsec-3.1.14.0/docs/Text-Parsec.html#v:try)
 and even [precedence
 climbing](https://en.wikipedia.org/wiki/Operator-precedence_parser#Precedence_climbing_method)
@@ -112,7 +112,43 @@ and `Peekable` does not allow that. Surely `Peekable` could be made to work as
 well but I rolled my own lookahead and there is no profit in getting hung up on
 such issues.
 
-## The Recursive Descent Parser
+## The Grammar
+
+We are making an arithmetic expression parser which parses the `KyyLexer` token
+iterator. The previous lexer post already showed the precise grammar over
+tokens:
+
+```
+expr = expr (PLUS | MINUS) term
+     | term
+
+term = term (STAR | SLASH) atom
+     | atom
+
+atom = INT
+```
+
+This grammar already encodes operator precedence: e.g. `expr (PLUS | MINUS)
+term` makes addition and subtraction left-associative. The only point in
+showing a naïve ambiguous grammar like
+
+```
+expr = expr PLUS expr | expr MINUS expr
+     | expr STAR expr | expr SLASH expr
+     | INT
+```
+
+is to point out that it can't possibly lead to the parser you want *because it
+simply does not express operator precedence at all*.
+
+## Abstract Syntax Tree
+
+A **recognizer** just checks that the sequence of symbols matches the grammar.
+Regular expressions are often used that way, but as usual with context-free
+grammars we want a proper **parser** which produces [something more convenient
+than the input string](https://wiki.c2.com/?StringlyTyped). And we will produce
+the usual thing, an **A**bstract **S**yntax **T**ree (in a new file
+`parser.rs`):
 
 ```rust
 use super::lexer::{self, Token, KyyLexer, Spanning, Located};
@@ -132,6 +168,31 @@ pub enum Expr_ {
 type Expr = Spanning<Expr_>;
 ```
 
+Although the structure of this `enum` is quite close to the grammar, it is not
+a **conrete syntax tree**; those match the structure of the grammar exactly and
+often also retain all the tokens while our tree here retains none.
+
+Since Rust (like C and Go) uses value semantics so recursion in types has to go
+through some kind of explicit pointer or the compiler will complain about
+infinitely sized types. The default `Box` is good enough for now, but
+eventually we will have to implement a garbage collector and use GC'd pointers
+in AST:s like everything else.
+
+Note how the recursion also goes through `Spanning`, a nice [orthogonal way to
+add source locations](http://mlton.org/AST#_details_and_notes). And in Rust this
+has guaranteed zero cost, unlike in ML (although MLton does have [optimizations
+for this](http://mlton.org/Flatten)).
+
+## Error Handling, Front and Center
+
+As good Rustaceans we want to be very explicit with error handling. It also
+bears reiterating that error messages are half of the compiler UI (the other
+half being the language syntax) and probably most of the UX.
+
+There aren't actually that many types of error situations the parser can get
+into. It can encounter an unexpected token, unexpected end of input or a lexer
+error (unexpected character):
+
 ```rust
 #[derive(Debug)]
 pub enum Error {
@@ -139,7 +200,13 @@ pub enum Error {
     Eof,
     Lex(lexer::Error)
 }
+```
 
+Errors should be wrapped with source locations, so let's add some boilerplate
+to convert a `Located` lexer error to a `Located` parse error and the usual
+`Result` alias:
+
+```rust
 impl From<Located<lexer::Error>> for Located<Error> {
     fn from(err: Located<lexer::Error>) -> Self {
         Located {
@@ -152,6 +219,16 @@ impl From<Located<lexer::Error>> for Located<Error> {
 
 type ParseResult<T> = Result<T, Located<Error>>;
 ```
+
+This does not provide super-helpful high-level error messages, but at least the
+error is pinpointed. I am just keeping it simple to get some sort of parser
+going but many production compilers settle for this level of parse error. Which
+is part of the reason people tend to resent compilers for non-mainstream
+languages (static type errors are worse, but Python does not have standard
+built-in static typing, so we get to avoid that issue).
+
+Finally (with the benefit of hindsight) we'll add some helpers that peek at the
+first token while producing `ParseResult`s of tokens:
 
 ```rust
 fn peek<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Option<Token>> {
@@ -168,6 +245,14 @@ fn peek_some<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Token> {
     }
 }
 ```
+
+It is convenient to centralize the error munging here instead of fiddling with
+`LexResult = Result<Spanning<Token>, Located<Error>>`:s all over the place;
+remember, that format was just forced upon us by the `Iterator` trait. (Maybe
+implementing `Iterator` wasn't such a bright idea after all? But otherwise, it
+fit so well...)
+
+## The Actual Parser
 
 ```rust
 
