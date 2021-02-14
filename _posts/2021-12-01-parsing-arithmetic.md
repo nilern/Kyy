@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "Parsing Arithmetic Expressions"
-date: 2021-02-13 18:50:00 +0200
+date: 2021-02-13 21:50:00 +0200
 tags: parsing LL recursive-descent
 ---
 
@@ -254,8 +254,12 @@ fit so well...)
 
 ## The Actual Parser
 
-```rust
+As could be expected, parsing an "atom" prefix of the input is trivial: just
+check that there is a first token and it is suitable using `peek_some` and if
+so, consume that token. Furthermore at this point atoms can only be integer
+constants:
 
+```rust
 // ::= INTEGER
 fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
     match peek_some(tokens)? {
@@ -266,7 +270,19 @@ fn atom<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     }
 }
+```
 
+The triviality is not accidental, but occurs because our friendly neighbourhood
+lexer does all the hard work. This reliance on a lexer is the main trick to
+parsing anything more complicated than Lisp or JSON with an LL(1) parser; by
+itself LL(1) is quite weak.
+
+When writing the code I thought to rename the math-y `expr` and `term` to the
+more obvious `additive` and `multiplicative`. Additionally (could not resist
+the pun) "expr(ession)" and "term" are also very generic terms (argh) e.g.  I
+named the AST expression type `Expr` without even giving it any thought.
+
+```rust
 // ::= <multiplicative> (STAR | SLASH) <atom>
 //   | <atom>
 fn multiplicative<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
@@ -312,7 +328,114 @@ fn additive<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> {
         }
     }
 }
+```
 
+The code seems straightforward but constructing it required detailed knowledge
+of the LL(1) parsing technique. First of all (depending on your level of
+overwhelm) you might have noticed that instead of immediately recursing these
+functions call lower precedence ones and then enter a loop, which does not
+follow the grammar productions at all. This is because LL parsing does not
+support left recursion; a function that immediately calls itself never gets to
+do any useful work before overflowing the stack. (In truly high-level languages
+self-tail-calls loop forever and nontail self-calls grow the stack until the
+process runs out of memory).
+
+Fortunately there are widely known grammar transformations that get rid of
+left recursion while retaining the same input language. In particular simple
+directly left-recursive nonterminals like
+
+```
+additive = additive (PLUS | MINUS) multiplicative
+         | multiplicative
+```
+
+can be turned into
+
+```
+additive = multiplicative additive'
+additive' = (PLUS | MINUS) multiplicative additive'
+          |
+```
+
+or, transitioning to EBNF with the regex repetition operators `?`, `*` and `+`:
+
+```
+additive = multiplicative ((PLUS | MINUS) multiplicative)*
+```
+
+And as we already saw on the lexer post, `*` can be implemented with a loop.
+So this explains the `loop`s.
+
+But what about the token `match`ing inside the loops? We could just handwave it
+like in the lexer post. But [my hefty parsing tome (affiliate
+link)](https://www.amazon.com/gp/product/038720248X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=2754d9e90cb516a38c7c1f43740ebb3a)
+informs me that there is a method to this madness. (Can an e-book be hefty?
+Even the Kindle edition certainly feels hefty to me...):
+
+1. Compute the FIRST set of each production. This is just the set of tokens
+   that can start a valid input for the production. If a production is
+   "nullable" (matches the empty string), add `epsilon` to the FIRST set.
+2. If there were any nullable productions, compute the FOLLOW set of each
+   production. This is just the set of tokens that can follow the production in
+   a valid input string.
+3. Compute the LOOKAHEAD set of each production. It is just FIRST if `epsilon
+   not in FIRST` and `FIRST - {epsilon} U FOLLOW` otherwise.
+
+If the LOOKAHEAD sets of the alternative productions of a nonterminal overlap,
+the grammar is unsuitable for LL(1) parsing. The LOOKAHEAD set of any
+left-recursive production will overlap with all the others, which is another
+way to prove that LL(1) cannot handle left recursion.
+
+The FIRST and FOLLOW computations are closure algorithms over the entire
+grammar. This is because nonterminals can refer to each other (and themselves)
+by name. It is also the reason why parser combinators usually use backtracking;
+their point is to be composable, and the FIRST and FOLLOW computations are not.
+I won't spell out the details of the FIRST and FOLLOW computations; maybe you
+are like me and would like to work it out yourself or splurge on
+[parsing](https://www.amazon.com/gp/product/038720248X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=2754d9e90cb516a38c7c1f43740ebb3a)
+and
+[compiler](https://www.amazon.com/gp/product/052182060X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=052182060X&linkId=06c0fb743b0089e4771a6bbfa61a64d9)
+books (affiliate links).
+
+Honestly, most people should not need to know such tedious details and
+certainly not do these computations by hand; that's what computers and parser
+generators in particular are for. But we are trying to learn something here and
+besides LL(1) is so weak that parser generators just get in the way of hacks
+that are necessary to implement a full programming language.
+
+Anyway, the LOOKAHEAD sets for our LL(1)-modified grammar
+
+```
+additive = multiplicative additive'
+additive' = (PLUS | MINUS) multiplicative additive'
+          |
+multiplicative = atom multiplicative'
+multiplicative' = (STAR | SLASH) atom multiplicative'
+                |
+atom = INT
+```
+
+are
+
+```
+additive : {INT}
+additive'[0] = (PLUS | MINUS) multiplicative additive' : {PLUS, MINUS}
+additive'[1] = : EOF
+multiplicative = {INT}
+multiplicative'[0] = (STAR | SLASH) atom multiplicative' : {STAR, SLASH}
+multiplicative'[1] = : EOF
+atom = {INT}
+```
+
+which should explain the production-determining `match`ing inside the loops.
+
+Finally we have a top level `expr` function which happens to be an
+eta-expansion of `additive` at the moment but I would not bet on that
+continuing to be the case. So far all the parsing functions have parsed a
+prefix of the input, but the exported overall `parse` ensures that the entire
+input is consumed by checking with `peek` that no tokens are left.
+
+```rust
 // ::= <additive>
 fn expr<'a>(tokens: &mut KyyLexer<'a>) -> ParseResult<Expr> { additive(tokens) }
 
@@ -327,6 +450,10 @@ pub fn parse(mut lexer: KyyLexer) -> ParseResult<Expr> {
 ```
 
 ## Seeing the Results
+
+Since `Expr` derives `Debug` we can just use the semi-obscure format directive
+`"{:#?}"` to get a verbose pretty-print of the expression AST instead of the
+tokens in the previous post:
 
 ```rust
 fn main() {
@@ -348,6 +475,8 @@ fn main() {
     }
 }
 ```
+
+Run it and throw an expression in:
 
 ```sh
 $ cargo run
@@ -388,6 +517,9 @@ Spanning {
     span: 0..9,
 }
 ```
+
+Looks good to me. The verbosity is mostly due to the source locations that we
+keep for error messages. Did I already mention that those *are* important?
 
 ---
 
