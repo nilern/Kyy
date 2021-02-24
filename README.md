@@ -1,5 +1,7 @@
 # Kyy
 
+<img src="Kyy_logo.svg" alt="Kyy logo" width="120"/>
+
 > Aura kultainen kuvoa, hope'inen huolittele!<br>
 > Sillä kynnät kyisen pellon, käärmehisen käännättelet.
 >
