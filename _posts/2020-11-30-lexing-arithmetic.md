@@ -426,5 +426,8 @@ tree, a much more useful data structure.
 
 [Back to the front page](/Kyy/)
 
+You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
+see more posts sooner.
+
 As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 
