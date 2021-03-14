@@ -7,7 +7,32 @@ tags: variables
 
 # Global Variables and Statements
 
+After the previous post we have an integer calculator with a syntax that
+inevitably overlaps with Python expressions. Of course that is intentional, but
+you can't even tell.
+
+It is time to add one of the more impressive features of my trusty [TI-86]();
+global variables. [Assignment
+expressions](https://www.python.org/dev/peps/pep-0572/) are a recent and
+controversial addition, so I decided to add just variable reference expressions
+and variable assignment statements. Python makes more of a distinction between
+expressions and statements than C and its derivatives, so this post will also
+add the syntactic category of statements. Despite these additions, even after
+this post the implemented subset of syntax is not distinctly Python-like even
+though it is a valid subset of Python syntax.
+
+Python does not have variable declaration/definition statements like C `int i(
+= 0);` or Javascript `var i( = 0);`; variables are considered defined at first
+assignment. This post does not add any scoping constructs and the naïve
+implementation of global variables shown here happens to implement the Python
+semantics nicely. We don't yet need to consider idiosyncrasies of Python
+variable scoping like function scope, `global` and `nonlocal`.
+
 ## Lexing
+
+Previous posts have built the layers of [lexing](), [parsing](), [evaluation]()
+and [REPL](). From now on we will usually implement features that span layers
+instead of adding new layers or subsystems on every post.
 
 `lexer.rs`
 
