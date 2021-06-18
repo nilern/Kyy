@@ -133,7 +133,7 @@ foo
 >>>
 ```
 
-Useless perhaps but as Jamie Zawinski put it in [Coders at Work (affiliate link)](https://www.amazon.com/gp/product/1430219483/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=1430219483&linkId=df4feafb8ee088aa3c4f20601a61661e):
+Useless perhaps but as Jamie Zawinski put it in [Coders at Work](https://www.amazon.com/Coders-Work-Reflections-Programming-September/dp/B009KJHXIE/ref=sr_1_2?crid=H32G03WWYWEH&dchild=1&keywords=coders+at+work+reflections+on+the+craft+of+programming&qid=1624026582&sprefix=coders+at+work%2Caps%2C278&sr=8-2):
 
 > I find that getting something on the screen as soon as possible really helps focus the problem for me.
 > It helps me decide what to work on next. Because if you’re just looking at that big to-do list it’s like,
@@ -143,7 +143,7 @@ Useless perhaps but as Jamie Zawinski put it in [Coders at Work (affiliate link)
 > tree structure, now maybe I should be emitting HTML or something along those lines. Or parsing the
 > headers in a more detailed way. You just look for the next thing to build on from there.
 
-And of course I have a huge to-do list for Kyy. I use [GTD (affiliate link)](https://www.amazon.com/gp/product/0143126563/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=0143126563&linkId=dc0c2b4e0a932a14435eeb27f521688f)
+And of course I have a huge to-do list for Kyy. I use [GTD](https://www.amazon.com/Getting-Things-Done-Stress-Free-Productivity/dp/0670899240/ref=sr_1_3?dchild=1&keywords=getting+things+done&qid=1624026619&sr=8-3)
 so I have a lot of lists, they keep me calm.
 
 From now on I will not bore you with `git commit` commands, you can
@@ -157,9 +157,4 @@ lexing AKA tokenization.
 ---
 
 [Back to the front page](/Kyy/)
-
-You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
-see more posts sooner.
-
-As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 

@@ -163,6 +163,3 @@ while the only user will be me, debugging the interpreter.
 
 [Back to the front page](/Kyy/)
 
-You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
-see more posts sooner.
-

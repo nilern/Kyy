@@ -26,8 +26,3 @@ structured like a follow-along tutorial:
   {% endfor %}
 </ol>
 
----
-
-You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
-see more posts sooner.
-

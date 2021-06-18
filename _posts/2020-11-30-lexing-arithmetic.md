@@ -283,13 +283,13 @@ Handwritten lexers naturally gravitate to LL(1) (or [LL(m,
 k)](https://www.antlr.org/papers/parr.phd.thesis.pdf)). The only systematic
 account of this methodology that I have seen was "Pattern 2: LL(1)
 Recursive-Descent Lexer" in [Language Implementation
-Patterns](https://www.amazon.com/gp/product/193435645X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=193435645X&linkId=2a158d853eecc599bed5cff5950cc0af)
-(affiliate link). [Intriguing that [the ANTLR
-guy](https://twitter.com/the_antlr_guy) would write a book with 50 pages of
-material on manual LL and Packrat (!) parsing.] Parr also points out that
-unlike regular expressions, LL(1) can easily deal with nested block comments
-(one of the numerous ML features also found in Rust). On the other hand regular
-expression implementations support infinite lookahead -- in constant space.
+Patterns](https://www.amazon.com/Language-Implementation-Patterns-Domain-Specific-Programming/dp/193435645X/ref=sr_1_1?crid=ADKP7464KXNI&dchild=1&keywords=language+implementation+patterns&qid=1624026729&sprefix=language+implementation+patterns%2Caps%2C228&sr=8-1).
+[Intriguing that [the ANTLR guy](https://twitter.com/the_antlr_guy) would write
+a book with 50 pages of material on manual LL and Packrat (!) parsing.] Parr
+also points out that unlike regular expressions, LL(1) can easily deal with
+nested block comments (one of the numerous ML features also found in Rust). On
+the other hand regular expression implementations support infinite lookahead --
+in constant space.
 
 To select from several alternatives we `match` a lookahead character:
 
@@ -425,9 +425,4 @@ tree, a much more useful data structure.
 ---
 
 [Back to the front page](/Kyy/)
-
-You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
-see more posts sooner.
-
-As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 

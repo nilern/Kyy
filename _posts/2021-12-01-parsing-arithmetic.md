@@ -12,8 +12,7 @@ expressions into a syntax tree. I will be writing an LL(1) recursive descent
 parser by hand. CPython used LL(1) for a long time, although it had its own
 parser generator to handle the boilerplate. Nowadays that parser generator
 [uses PEG instead](https://docs.python.org/3/reference/grammar.html) but
-[Parr's book (affiliate
-link)](https://www.amazon.com/gp/product/193435645X/ref=as_li_qf_asin_il_tl?ie=UTF8&tag=deepbeginning-20&creative=9325&linkCode=as2&creativeASIN=193435645X&linkId=2a158d853eecc599bed5cff5950cc0af)
+[Parr's book](https://www.amazon.com/Language-Implementation-Patterns-Domain-Specific-Programming/dp/193435645X/ref=sr_1_1?crid=ADKP7464KXNI&dchild=1&keywords=language+implementation+patterns&qid=1624026729&sprefix=language+implementation+patterns%2Caps%2C228&sr=8-1)
 from the previous post also showed me how to do backtracking and even Packrat
 parsing by hand if we ever have to go there. Handwritten parsers and parser
 combinators can also [incorporate
@@ -367,8 +366,8 @@ And as we already saw on the lexer post, `*` can be implemented with a loop.
 So this explains the `loop`s.
 
 But what about the token `match`ing inside the loops? We could just handwave it
-like in the lexer post. But [my hefty parsing tome (affiliate
-link)](https://www.amazon.com/gp/product/038720248X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=2754d9e90cb516a38c7c1f43740ebb3a)
+like in the lexer post. But [my hefty parsing
+tome](https://www.amazon.com/Parsing-Techniques-Practical-Monographs-Computer/dp/1441919015)
 informs me that there is a method to this madness. (Can an e-book be hefty?
 Even the Kindle edition certainly feels hefty to me...):
 
@@ -392,10 +391,10 @@ by name. It is also the reason why parser combinators usually use backtracking;
 their point is to be composable, and the FIRST and FOLLOW computations are not.
 I won't spell out the details of the FIRST and FOLLOW computations; maybe you
 are like me and would like to work it out yourself or splurge on
-[parsing](https://www.amazon.com/gp/product/038720248X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=038720248X&linkId=2754d9e90cb516a38c7c1f43740ebb3a)
+[parsing](https://www.amazon.com/Parsing-Techniques-Practical-Monographs-Computer/dp/1441919015)
 and
-[compiler](https://www.amazon.com/gp/product/052182060X/ref=as_li_tl?ie=UTF8&tag=deepbeginning-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=052182060X&linkId=06c0fb743b0089e4771a6bbfa61a64d9)
-books (affiliate links).
+[compiler](https://www.amazon.com/Modern-Compiler-Implementation-Andrew-Appel/dp/052182060X/ref=sr_1_3?dchild=1&keywords=modern+compiler+implementation&qid=1624026934&s=books&sr=1-3)
+books.
 
 Honestly, most people should not need to know such tedious details and
 certainly not do these computations by hand; that's what computers and parser
@@ -524,9 +523,4 @@ keep for error messages. Did I already mention that those *are* important?
 ---
 
 [Back to the front page](/Kyy/)
-
-You can [sponsor me](https://github.com/sponsors/nilern) if you would like to
-see more posts sooner.
-
-As an Amazon Associate I earn from qualifying purchases. [If such things ever happen...]
 
