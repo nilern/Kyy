@@ -13,7 +13,7 @@ pub struct Located<T> {
 pub struct Spanning<T> {
     pub value: T,
     pub filename: Option<Arc<String>>,
-    pub span: Range<usize>
+    pub span: Range<isize>
 }
 
 impl<T> Spanning<T> {

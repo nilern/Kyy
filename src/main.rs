@@ -47,7 +47,7 @@ fn main() {
             Ok(lines) => {
                 let lexer = lexer::KyyLexer::new(&lines, None);
                 match parser::parse(&mut km, lexer) {
-                    Ok(ref stmt) => match exec(&mut km, &mut env, stmt) {
+                    Ok(ref stmt) => match exec(&mut km, &mut env, stmt.clone()) {
                         Ok(Some(v)) => if let Some(n) = Int::downcast(&mut km, v.clone()) {
                             println!("=> {}", isize::from(n));
                         } else if let Some(b) = Bool::downcast(&mut km, v) {

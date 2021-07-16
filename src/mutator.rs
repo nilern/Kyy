@@ -11,10 +11,15 @@ use super::tuple::Tuple;
 use super::string::String;
 use super::ast;
 
+// FIXME: If the various `new` methods here and in e.g. super::ast do a GC,
+// they do not consider the passed-in contents of the new object as roots
+
 // ---
 
 #[repr(C)]
-pub struct Type {}
+pub struct Type {
+    bases: Gc<Tuple>
+}
 
 // ---
 
@@ -40,7 +45,7 @@ pub unsafe trait KyyType: Sized {
 }
 
 pub unsafe trait KyySizedSlotsType: KyyType {
-    fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> {
+    fn alloc(km: &mut KyyMutator, contents: Self) -> Root<Self> {
         unsafe {
             let root: Root<Object> = km.alloc_slots(Self::reify(km), GSize::of::<Self>().into());
             let root: Root<Self> = root.unchecked_cast();
@@ -51,7 +56,7 @@ pub unsafe trait KyySizedSlotsType: KyyType {
 }
 
 pub unsafe trait KyySizedBytesType: KyyType {
-    fn new(km: &mut KyyMutator, contents: Self) -> Root<Self> {
+    fn alloc(km: &mut KyyMutator, contents: Self) -> Root<Self> {
         unsafe {
             let root: Root<Object> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
             let root: Root<Self> = root.unchecked_cast();
@@ -70,6 +75,7 @@ struct BuiltinTypes {
     tuple_typ: Gc<Type>,
     string_typ: Gc<Type>,
 
+    expr_typ: Gc<Type>,
     add_typ: Gc<Type>,
     sub_typ: Gc<Type>,
     mul_typ: Gc<Type>,
@@ -82,6 +88,9 @@ struct BuiltinTypes {
     ge_typ: Gc<Type>,
     var_typ: Gc<Type>,
     const_typ: Gc<Type>,
+
+    stmt_typ: Gc<Type>,
+    expr_stmt_typ: Gc<Type>,
     if_typ: Gc<Type>,
     assign_typ: Gc<Type>
 }
@@ -101,6 +110,7 @@ impl_kyy_type!(Bool, bool_typ);
 impl_kyy_type!(Tuple, tuple_typ);
 impl_kyy_type!(String, string_typ);
 
+impl_kyy_type!(ast::Expr, expr_typ);
 impl_kyy_type!(ast::Add, add_typ);
 impl_kyy_type!(ast::Sub, sub_typ);
 impl_kyy_type!(ast::Mul, mul_typ);
@@ -113,6 +123,9 @@ impl_kyy_type!(ast::Ge, ge_typ);
 impl_kyy_type!(ast::Gt, gt_typ);
 impl_kyy_type!(ast::Var, var_typ);
 impl_kyy_type!(ast::Const, const_typ);
+
+impl_kyy_type!(ast::Stmt, stmt_typ);
+impl_kyy_type!(ast::ExprStmt, expr_stmt_typ);
 impl_kyy_type!(ast::If, if_typ);
 impl_kyy_type!(ast::Assign, assign_typ);
 
@@ -135,49 +148,97 @@ impl KyyMutator {
         let mut heap = gc::Heap::new(max_heap_size)?;
         let mut roots = Vec::new();
         unsafe {
-            let mut type_typ: Gc<Type> = heap.alloc_bytes(ORef::NULL, size_of::<Type>(), align_of::<Type>())?
+            let mut type_typ: Gc<Type> = heap.alloc_slots(ORef::NULL, size_of::<Type>())?
                 .unchecked_cast();
+            let object_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            let tuple_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+          
+            // OPTIMIZE: Make the empty tuple a singleton?:
+            let empty_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 0)?.unchecked_cast();
+            let mut obj_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
+            obj_bases.as_mut_ptr().write(object_typ);
+
+            // Backpatch `<class 'type'>` header:
             *type_typ.header_mut().class_mut() = type_typ.into();
-            let object_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let int_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let bool_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let tuple_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let string_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
 
-            let add_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let sub_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let mul_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
-            let div_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
-                .unchecked_cast();
+            // Backpatch type object contents:
+            type_typ.as_mut_ptr().write(Type {bases: obj_bases});
+            object_typ.as_mut_ptr().write(Type {bases: empty_bases});
+            tuple_typ.as_mut_ptr().write(Type {bases: obj_bases});
 
-            let le_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            let int_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let lt_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            int_typ.as_mut_ptr().write(Type {bases: obj_bases});
+            let bool_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let eq_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            bool_typ.as_mut_ptr().write(Type {bases: obj_bases});
+            let string_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let ne_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            string_typ.as_mut_ptr().write(Type {bases: obj_bases});
+
+            let expr_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let ge_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            expr_typ.as_mut_ptr().write(Type {bases: obj_bases});
+
+            let expr_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
+            expr_bases.as_mut_ptr().write(expr_typ);
+
+            let add_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let gt_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            add_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let sub_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let var_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            sub_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let mul_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let const_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            mul_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let div_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let if_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            div_typ.as_mut_ptr().write(Type {bases: expr_bases});
+
+            let le_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
-            let assign_typ: Gc<Type> = heap.alloc_bytes(type_typ.into(), size_of::<Type>(), align_of::<Type>())?
+            le_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let lt_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
+            lt_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let eq_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            eq_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let ne_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            ne_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let ge_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            ge_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let gt_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            gt_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let var_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            var_typ.as_mut_ptr().write(Type {bases: expr_bases});
+            let const_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            const_typ.as_mut_ptr().write(Type {bases: expr_bases});
+
+            let stmt_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            stmt_typ.as_mut_ptr().write(Type {bases: obj_bases});
+
+            let stmt_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
+            stmt_bases.as_mut_ptr().write(stmt_typ);
+
+            let expr_stmt_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            expr_stmt_typ.as_mut_ptr().write(Type {bases: stmt_bases});
+            let if_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            if_typ.as_mut_ptr().write(Type {bases: stmt_bases});
+            let assign_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
+                .unchecked_cast();
+            assign_typ.as_mut_ptr().write(Type {bases: stmt_bases});
 
             let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
@@ -194,8 +255,9 @@ impl KyyMutator {
                 heap,
                 roots,
                 types: BuiltinTypes {type_typ, object_typ, int_typ, bool_typ, tuple_typ, string_typ,
-                    add_typ, sub_typ, mul_typ, div_typ, le_typ, lt_typ, eq_typ, ne_typ, ge_typ, gt_typ,
-                    var_typ, const_typ, if_typ, assign_typ},
+                    expr_typ, add_typ, sub_typ, mul_typ, div_typ, le_typ, lt_typ, eq_typ, ne_typ, ge_typ, gt_typ,
+                    var_typ, const_typ,
+                    stmt_typ, expr_stmt_typ, if_typ, assign_typ},
                 singletons: Singletons {tru, fals}
             })
         }

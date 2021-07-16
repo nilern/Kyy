@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use super::lexer::{self, Token, TokenTag, KyyLexer, Located};
-use super::ast;
-use super::mutator::{KyyMutator, KyySizedBytesType};
+use super::ast::*;
+use super::mutator::KyyMutator;
 use super::orefs::Root;
-use super::object::Object;
 use super::tuple::Tuple;
+use super::string::String;
 use super::int::Int;
 
 // ---
@@ -61,23 +59,23 @@ fn token<'a>(tokens: &mut KyyLexer<'a>, tag: TokenTag) -> ParseResult<'a, Token<
 
 // ::= IDENTIFIER
 //   | INTEGER
-fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Expr>> {
     match peek_some(tokens)? {
         Token::Identifier(chars) => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Var(Arc::new(String::from(chars))), tok.span)))
+            Ok(Var::new(km, tok.filename, tok.span, chars).into())
         },
         Token::Integer(n) => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(Int::new(km, Int(n)).as_obj()), tok.span)))
+            Ok(Const::new(km, tok.filename, tok.span, Int::new(km, n).as_obj()).into())
         },
         Token::True => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(km.the_true().as_obj()), tok.span)))
+            Ok(Const::new(km, tok.filename, tok.span, km.the_true().as_obj()).into())
         },
         Token::False => {
             let tok = tokens.next().unwrap()?;
-            Ok(Box::new(tokens.spanning(Expr::Const(km.the_false().as_obj()), tok.span)))
+            Ok(Const::new(km, tok.filename, tok.span, km.the_false().as_obj()).into())
         },
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     }
@@ -85,21 +83,21 @@ fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
 
 // ::= <multiplicative> ('*' | '/') <atom>
 //   | <atom>
-fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Expr>> {
     let mut l = atom(km, tokens)?; // <atom>
     loop { // ((STAR | SLASH) <atom>)*
         match peek(tokens)? {
             Some(Token::Star) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Mul(l, r), span));
+                let span = l.start()..r.end();
+                l = Mul::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Slash) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Div(l, r), span));
+                let span = l.start()..r.end();
+                l = Div::new(km, l.filename(km), span, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -108,21 +106,21 @@ fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseRe
 
 // ::= <additive> ('+' | '-') <multiplicative>
 //   | <multiplicative>
-fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Expr>> {
     let mut l = multiplicative(km, tokens)?; // <multiplicative>
     loop { // ((PLUS | MINUS) <multiplicative>)*
         match peek(tokens)? {
             Some(Token::Plus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Add(l, r), span));
+                let span = l.start()..r.end();
+                l = Add::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Minus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Sub(l, r), span));
+                let span = l.start()..r.end();
+                l = Sub::new(km, l.filename(km), span, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -132,45 +130,45 @@ fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'
 // TODO: Chained comparisons (`a < b >= c` = `a < b and b >= c`)
 // ::= <comparison> ('<', '<=', '==', '!=', '>', '>=') <additive>
 //   | <additive>
-fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Expr>> {
     let mut l = additive(km, tokens)?; // <additive>
     loop { // ((LT | LE | EQ | NE | GT | GE) <additive>)*
         match peek(tokens)? {
             Some(Token::Lt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Lt(l, r), span));
+                let span = l.start()..r.end();
+                l = Lt::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Le) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Le(l, r), span));
+                let span = l.start()..r.end();
+                l = Le::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Eq) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Eq(l, r), span));
+                let span = l.start()..r.end();
+                l = Eq::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Ne) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Ne(l, r), span));
+                let span = l.start()..r.end();
+                l = Ne::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Gt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Gt(l, r), span));
+                let span = l.start()..r.end();
+                l = Gt::new(km, l.filename(km), span, l, r).into();
             },
             Some(Token::Ge) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.span.start..r.span.end;
-                l = Box::new(tokens.spanning(Expr::Ge(l, r), span));
+                let span = l.start()..r.end();
+                l = Ge::new(km, l.filename(km), span, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -178,7 +176,7 @@ fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
 }
 
 // ::= <additive>
-fn expr<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn expr<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Expr>> {
     comparison(km, tokens)
 }
 
@@ -211,10 +209,10 @@ fn else_block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
 // ::= 'if' <expr> ':' <block> ('else' ':' <block>)?
 //   | VAR '=' <expr> NEWLINE
 //   | <expr> NEWLINE
-fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, Root<Stmt>> {
     let res = match peek_some(tokens)? {
         Token::If => { // IF
-            let _ = tokens.next();
+            let if_tok = tokens.next().unwrap()?;
             let condition = expr(km, tokens)?;
             token(tokens, TokenTag::Colon)?;
             let conseq = block(km, tokens)?;
@@ -222,22 +220,24 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
                 Some(Token::Else) => else_block(km, tokens)?,
                 _ => Tuple::new(km, &[])
             };
-            return Ok(Stmt::If {condition, conseq, alt});
+            let span = if_tok.span.start..conseq.end();
+            return Ok(If::new(km, if_tok.filename, span, condition, conseq, alt).into());
         },
 
         Token::Identifier(name) => { // IDENTIFIER
             let id = tokens.next().unwrap()?;
             match peek(tokens)? { // ('=' <expr>)?
                 Some(Token::Assign) => {
-                    let _ = tokens.next();
+                    let lvalue_tok = tokens.next();
                     let rvalue = expr(km, tokens)?;
-                    Ok(Stmt::Assign(String::from(name), rvalue))
+                    let span = lvalue_tok.span.start..rvalue.end();
+                    Ok(Assign::new(km, id.filename, span, String::new(km, name), rvalue).into())
                 },
-                _ => Ok(Stmt::Expr(Box::new(tokens.spanning(Expr::Var(Arc::new(String::from(name))), id.span))))
+                _ => Ok(ExprStmt::new(km, Var::new(km, id.filename, id.span, name).into()).into())
             }
         },
 
-        Token::Integer(_) | Token::True | Token::False => Ok(Stmt::Expr(expr(km, tokens)?)),
+        Token::Integer(_) | Token::True | Token::False => Ok(ExprStmt::new(km, expr(km, tokens)?)),
 
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     };
@@ -246,7 +246,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
 }
 
 // ::= <stmt> EOF
-pub fn parse<'a>(km: &mut KyyMutator, mut lexer: KyyLexer<'a>) -> ParseResult<'a, Root<Object>> {
+pub fn parse<'a>(km: &mut KyyMutator, mut lexer: KyyLexer<'a>) -> ParseResult<'a, Root<Stmt>> {
     let stmt = stmt(km, &mut lexer)?;
     match peek(&mut lexer)? {
         None => Ok(stmt),

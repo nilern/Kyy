@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use super::orefs::Root;
-use super::mutator::{KyyMutator, KyyType, KyySizedBytesType};
+use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
 use super::string;
-use super::ast;
+use super::ast::{self, Expr, Stmt};
 use super::lexer::Spanning;
 
 pub enum Error {
@@ -21,19 +21,19 @@ type Env = HashMap<String, Root<Object>>;
 
 pub fn new_global_env() -> Env { HashMap::new() }
 
-fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
+fn arithmetic<F>(km: &mut KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
     -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> isize
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
-            return Ok(Int::new(km, Int(f(l.into(), r.into()))).as_obj());
+            return Ok(Int::new(km, f(l.into(), r.into())).as_obj());
         }
     }
 
     Err(Error::TypeError(vec![l, r]))
 }
 
-fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
+fn comparison<F>(km: &KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
     -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> bool
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
@@ -45,7 +45,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     Err(Error::TypeError(vec![l, r]))
 } 
 
-pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Object>) -> EvalResult<Root<Object>> {
+pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root<Object>> {
     use ast::*;
 
     let res =
@@ -116,7 +116,7 @@ fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalRes
     Ok(res)
 }
 
-pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Object>) -> EvalResult<Option<Root<Object>>> {
+pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<Option<Root<Object>>> {
     if let Some(ast::If {condition, conseq, alt}) = ast::If::downcast(km, stmt)
         .map(|root| unsafe { *root.as_ref() })
     {
