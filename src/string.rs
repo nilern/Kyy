@@ -21,7 +21,9 @@ impl String {
             root
         }
     }
+}
 
+impl Root<String> {
     pub fn len(&self) -> usize {
         (unsafe { self.header().size() } - size_of::<Header>()).into()
     }

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::orefs::Root;
 use super::mutator::{KyyMutator, KyyType, KyySizedBytesType};
@@ -7,12 +6,13 @@ use super::object::Object;
 use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
+use super::string;
 use super::ast;
 use super::lexer::Spanning;
 
 pub enum Error {
     TypeError(Vec<Root<Object>>),
-    Unbound(Arc<String>)
+    Unbound(Root<string::String>)
 }
 
 type EvalResult<T> = Result<T, Spanning<Error>>;
@@ -46,66 +46,65 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
 } 
 
 pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Object>) -> EvalResult<Root<Object>> {
-    let res = match expr.value {
-        Expr::Add(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+    use ast::*;
+
+    let res =
+        if let Some(expr) = Add::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             arithmetic(km, l, r, |l, r| l + r)
-        },
-        Expr::Sub(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Sub::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             arithmetic(km, l, r, |l, r| l - r)
-        },
-        Expr::Mul(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Mul::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             arithmetic(km, l, r, |l, r| l * r)
-        },
-        Expr::Div(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Div::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             arithmetic(km, l, r, |l, r| l / r)
-        },
 
-        Expr::Lt(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Lt::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l < r)
-        },
-        Expr::Le(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Le::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l <= r)
-        },
-        Expr::Eq(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Eq::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l == r)
-        },
-        Expr::Ne(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Ne::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l != r)
-        },
-        Expr::Gt(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Gt::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l > r)
-        },
-        Expr::Ge(ref l, ref r) => {
-            let l = eval(km, env, l)?;
-            let r = eval(km, env, r)?;
+        } else if let Some(expr) = Ge::downcast(km, expr) {
+            let l = eval(km, env, expr.left(km))?;
+            let r = eval(km, env, expr.right(km))?;
             comparison(km, l, r, |l, r| l >= r)
-        },
 
-        Expr::Var(ref name) => match env.get(&**name) {
-            Some(v) => Ok(v.clone()),
-            None => Err(Error::Unbound(name.clone()))
-        },
+        } else if let Some(expr) = Var::downcast(km, expr) {
+            let name = expr.name(km);
+            match env.get(name.as_str()) {
+                Some(v) => Ok(v.clone()),
+                None => Err(Error::Unbound(name))
+            }
 
-        Expr::Const(ref c) => Ok(c.clone())
-    };
+        } else if let Some(expr) = Const::downcast(km, expr) {
+            Ok(expr.value(km))
+
+        } else {
+            todo!()
+        };
+
     res.map_err(|err| expr.here(err))
 }
 

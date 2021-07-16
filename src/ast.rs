@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
-use super::lexer::Spanning;
 use super::object::Object;
-use super::orefs::{Root, Gc};
-use super::mutator::KyySizedSlotsType;
+use super::orefs::{Gc, Root};
+use super::mutator::{KyySizedSlotsType, KyyMutator};
 use super::string::String;
 use super::tuple::Tuple;
 use super::int::Int;
@@ -19,6 +16,12 @@ macro_rules! binary_node {
         }
 
         unsafe impl KyySizedSlotsType for $name {}
+
+        impl Root<$name> {
+            pub fn left(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().left) }
+
+            pub fn right(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().right) }
+        }
     }
 }
 
@@ -39,10 +42,18 @@ pub struct Var(pub Gc<String>);
 
 unsafe impl KyySizedSlotsType for Var {}
 
+impl Root<Var> {
+    pub fn name(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().0) }
+}
+
 #[repr(C)]
 pub struct Const(pub Gc<Object>);
 
 unsafe impl KyySizedSlotsType for Const {}
+
+impl Root<Const> {
+    pub fn value(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().0) }
+}
 
 #[repr(C)]
 pub struct If {
