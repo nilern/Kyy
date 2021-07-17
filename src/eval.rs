@@ -124,7 +124,7 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
             Ok(expr.value(km))
 
         } else {
-            todo!()
+            unreachable!("not an ast::Expr");
         }
     };
 
@@ -176,7 +176,7 @@ pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<
         let expr = stmt.expr(km);
         eval(km, env, expr).map(Some)
     } else {
-        todo!()
+        unreachable!("not an ast::Expr");
     }
 }
 
