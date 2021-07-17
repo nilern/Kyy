@@ -20,6 +20,17 @@ impl<T> Gc<T> {
         }
         self // non-moving GC ATM; returned for forwards compatibility
     }
+
+    unsafe fn semis_mark(mut self, heap: &mut SemisHeap) -> Gc<T> {
+        match self.header().forwarded() {
+            Some(res) => res,
+            None => {
+                let res = heap.alloc_clone(self).unwrap();
+                self.header_mut().forward(res);
+                res
+            }
+        }
+    }
 }
 
 // ---
@@ -110,6 +121,19 @@ impl Header {
             })
         }
     }
+
+    unsafe fn forwarded<T>(&self) -> Option<Gc<T>> {
+        if self.heading.is_marked() {
+            Some(self.class.unchecked_cast())
+        } else {
+            None
+        }
+    }
+
+    fn forward<T>(&mut self, dest: Gc<T>) {
+        self.heading.mark();
+        self.class = dest.into();
+    }
 }
 
 // ---
@@ -145,6 +169,87 @@ impl Semispace {
     }
 
     fn size(&self) -> usize { self.end as usize - self.start as usize }
+}
+
+// ---
+
+struct SemisHeap {
+    max_size: usize,
+    fromspace: Semispace,
+    tospace: Semispace,
+    free_slots: *mut u8,
+    latest_bytes: *mut u8
+}
+
+impl SemisHeap {
+    fn new(initial_size: usize, max_size: usize) -> Option<SemisHeap> {
+        debug_assert!(initial_size <= max_size);
+        let fromspace = Semispace::new(initial_size / 2)?;
+        let tospace = Semispace::new(initial_size / 2)?;
+        let free_slots = tospace.start;
+        let latest_bytes = tospace.end;
+        Some(Self {max_size, fromspace, tospace, free_slots, latest_bytes})
+    }
+
+    unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<Object>> {
+        let gsize = GSize::from(len);
+
+        let header = self.free_slots as *mut Header;
+        let start = (header as usize).checked_add(size_of::<Header>())?;
+        let free_slots = start.checked_add(gsize.in_bytes())?;
+
+        if free_slots > self.latest_bytes as usize {
+            None
+        } else {
+            header.write(Header {
+                heading: Heading::slots(gsize),
+                class
+            });
+
+            self.free_slots = free_slots as *mut u8;
+
+            Some(Gc::from_raw(start as *mut Object))
+        }
+    }
+
+    unsafe fn alloc_bytes(&mut self, class: ORef, size: usize, align: usize) -> Option<Gc<Object>> {
+        debug_assert!(align.is_power_of_two());
+
+        let align = align.max(align_of::<Header>());
+
+        let latest_bytes = self.latest_bytes as usize;
+        let start = latest_bytes.checked_sub(size)?;
+        let start = start & !(align - 1);
+        let header = start.checked_sub(size_of::<Header>())?;
+
+        if header < self.free_slots as usize {
+            None
+        } else {
+            (header as *mut Header).write(Header {
+                heading: Heading::bytes(size),
+                class
+            });
+
+            self.latest_bytes = header as *mut u8;
+
+            Some(Gc::from_raw(start as *mut Object))
+        }
+    }
+
+    fn alloc_clone<T>(&mut self, mut obj: Gc<T>) -> Option<Gc<T>> {
+        unsafe {
+            let (mut new_obj, size) = if obj.header().is_bytes() {
+                let size = obj.header().size();
+                (self.alloc_bytes(obj.class(), size, /* FIXME: */ size_of::<Header>())?, size)
+            } else {
+                let len = obj.header().gsize();
+                (self.alloc_slots(obj.class(), len.into())?, len.in_bytes())
+            };
+
+            ptr::copy_nonoverlapping(obj.as_mut_ptr() as *mut u8, new_obj.as_mut_ptr() as *mut u8, size);
+            Some(new_obj.unchecked_cast())
+        }
+    }
 }
 
 // ---
