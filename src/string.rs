@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug, Formatter};
 use std::mem::{size_of, align_of, transmute};
 use std::slice;
 use std::str;
@@ -21,6 +22,10 @@ impl String {
             root
         }
     }
+}
+
+impl Debug for Root<String> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result { self.as_str().fmt(f) }
 }
 
 impl Root<String> {

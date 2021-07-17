@@ -4,14 +4,14 @@ use std::ops::Range;
 use super::orefs::Root;
 use super::string;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Located<T> {
     pub value: T,
     pub filename: Root<string::String>,
     pub offset: usize
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Spanning<T> {
     pub value: T,
     pub filename: Root<string::String>,
