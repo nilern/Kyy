@@ -111,8 +111,8 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 
 fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
-    for i in 0..stmts.as_ref().len() {
-        res = exec(km, env, km.root(stmts.as_ref().slots()[i]).unchecked_cast())?;
+    for i in 0..stmts.len() {
+        res = exec(km, env, km.root(stmts.slots()[i]).unchecked_cast())?;
     }
     Ok(res)
 }

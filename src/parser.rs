@@ -213,8 +213,10 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
                 Some(Token::Else) => else_block(km, tokens)?,
                 _ => Tuple::new(km, &[])
             };
-            let span = if_tok.span.start..conseq.end();
-            return Ok(If::new(km, if_tok.filename, span, condition, conseq, alt).into());
+            let end = km.root(conseq.slots()[conseq.len() - 1]) // conseq.len() >= 1
+                .unchecked_cast::<Stmt>().end(km);
+            return Ok(If::new(km, if_tok.filename, if_tok.span.start, end,
+                              condition, conseq, alt).into());
         },
 
         Token::Identifier(name) => { // IDENTIFIER
@@ -230,7 +232,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
             }
         },
 
-        Token::Integer(_) | Token::True | Token::False => Ok(ExprStmt::new(km, expr(km, tokens)?)),
+        Token::Integer(_) | Token::True | Token::False => Ok(ExprStmt::new(km, expr(km, tokens)?).into()),
 
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     };

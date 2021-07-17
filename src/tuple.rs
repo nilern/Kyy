@@ -21,9 +21,11 @@ impl Tuple {
             root
         }
     }
+}
 
+impl Root<Tuple> {
     pub fn len(&self) -> usize {
-        (unsafe { self.header().gsize() } - GSize::of::<Header>()).into()
+        (unsafe { self.as_ref().header().gsize() } - GSize::of::<Header>()).into()
     }
 
     /// Safety: the returned slice must not be live across a safepoint

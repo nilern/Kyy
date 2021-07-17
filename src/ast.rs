@@ -140,6 +140,14 @@ pub struct Stmt {
     end: Gc<Int>
 }
 
+impl Root<Stmt> {
+    pub fn filename(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
+
+    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
+
+    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().end) }
+}
+
 #[repr(C)]
 pub struct ExprStmt {
     base: Stmt,
@@ -180,14 +188,14 @@ pub struct If {
 unsafe impl KyySizedSlotsType for If {}
 
 impl If {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>,
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, start: usize, end: Root<Int>,
         condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
     ) -> Root<If> {
         Self::alloc(km, If {
             base: Stmt {
                 filename: filename.oref(),
-                start: Int::new(km, span.start.try_into().unwrap()).oref(),
-                end: Int::new(km, span.end.try_into().unwrap()).oref(),
+                start: Int::new(km, start.try_into().unwrap()).oref(),
+                end: end.oref(),
             },
             condition: condition.oref(),
             conseq: conseq.oref(),
