@@ -30,6 +30,9 @@ const BYTES_SHIFT: usize = 1;
 const BYTES_BIT: usize = 1 << BYTES_SHIFT;
 const MARK_BIT: usize = 0b01;
 
+/// (62 | 30) bits of size (in granules for slots objects and in bytes for bytes objects)
+/// 1 bit for `is_bytes` flag
+/// 1 bit for `is_marked` flag
 #[derive(Debug)]
 struct Heading(usize);
 
