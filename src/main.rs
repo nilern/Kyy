@@ -45,7 +45,7 @@ fn main() {
     loop {
         match read_lines(&mut repl) {
             Ok(lines) => {
-                let lexer = lexer::KyyLexer::new(&lines, None);
+                let lexer = lexer::KyyLexer::new(&lines, string::String::new(&mut km, "<REPL input>"));
                 match parser::parse(&mut km, lexer) {
                     Ok(ref stmt) => match exec(&mut km, &mut env, stmt.clone()) {
                         Ok(Some(v)) => if let Some(n) = Int::downcast(&mut km, v.clone()) {
