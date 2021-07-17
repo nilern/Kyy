@@ -49,51 +49,71 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
     use ast::*;
 
     let res = {
-        let expr: Root<Object> = expr.as_obj(); // HACK
+        let expr: Root<Object> = expr.clone().as_obj(); // HACK
 
-        if let Some(expr) = Add::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        if let Some(expr) = Add::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             arithmetic(km, l, r, |l, r| l + r)
-        } else if let Some(expr) = Sub::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Sub::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             arithmetic(km, l, r, |l, r| l - r)
-        } else if let Some(expr) = Mul::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Mul::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             arithmetic(km, l, r, |l, r| l * r)
-        } else if let Some(expr) = Div::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Div::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             arithmetic(km, l, r, |l, r| l / r)
 
-        } else if let Some(expr) = Lt::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Lt::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l < r)
-        } else if let Some(expr) = Le::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Le::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l <= r)
-        } else if let Some(expr) = Eq::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Eq::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l == r)
-        } else if let Some(expr) = Ne::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Ne::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l != r)
-        } else if let Some(expr) = Gt::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Gt::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l > r)
-        } else if let Some(expr) = Ge::downcast(km, expr) {
-            let l = eval(km, env, expr.left(km))?;
-            let r = eval(km, env, expr.right(km))?;
+        } else if let Some(expr) = Ge::downcast(km, expr.clone()) {
+            let l = expr.clone().left(km);
+            let l = eval(km, env, l)?;
+            let r = expr.right(km);
+            let r = eval(km, env, r)?;
             comparison(km, l, r, |l, r| l >= r)
 
-        } else if let Some(expr) = Var::downcast(km, expr) {
+        } else if let Some(expr) = Var::downcast(km, expr.clone()) {
             let name = expr.name(km);
             match env.get(name.as_str()) {
                 Some(v) => Ok(v.clone()),
@@ -114,7 +134,8 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
     for i in 0..stmts.len() {
-        res = exec(km, env, km.root(stmts.slots()[i]).unchecked_cast())?;
+        let stmt = km.root(stmts.slots()[i]).unchecked_cast();
+        res = exec(km, env, stmt)?;
     }
     Ok(res)
 }
@@ -122,29 +143,38 @@ fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalRes
 pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<Option<Root<Object>>> {
     let stmt: Root<Object> = stmt.as_obj(); // HACK
 
-    if let Some(stmt) = ast::If::downcast(km, stmt) {
-        let cond = eval(km, env, stmt.condition(km))?;
+    if let Some(stmt) = ast::If::downcast(km, stmt.clone()) {
+        let cond = stmt.clone().condition(km);
+        let cond = eval(km, env, cond)?;
         // HACK:
-        if let Some(b) = Bool::downcast(km, cond) {
+        if let Some(b) = Bool::downcast(km, cond.clone()) {
             if b.into() {
-                exec_block(km, env, stmt.conseq(km))
+                let conseq = stmt.conseq(km);
+                exec_block(km, env, conseq)
             } else {
-                exec_block(km, env, stmt.alt(km))
+                let alt = stmt.alt(km);
+                exec_block(km, env, alt)
             }
         } else if let Some(n) = Int::downcast(km, cond) {
             if isize::from(n) != 0 {
-                exec_block(km, env, stmt.conseq(km))
+                let conseq = stmt.conseq(km);
+                exec_block(km, env, conseq)
             } else {
-                exec_block(km, env, stmt.alt(km))
+                let alt = stmt.alt(km);
+                exec_block(km, env, alt)
             }
         } else {
             todo!()
         }
-    } else if let Some(stmt) = ast::Assign::downcast(km, stmt) {
-        env.insert(stmt.var(km).as_str().to_string(), eval(km, env, stmt.rvalue(km))?);
+    } else if let Some(stmt) = ast::Assign::downcast(km, stmt.clone()) {
+        let rvalue = stmt.clone().rvalue(km);
+        let rvalue = eval(km, env, rvalue)?;
+        let var = stmt.var(km);
+        env.insert(var.as_str().to_string(), rvalue);
         Ok(None)
     } else if let Some(stmt) = ast::ExprStmt::downcast(km, stmt) {
-        eval(km, env, stmt.expr(km)).map(Some)
+        let expr = stmt.expr(km);
+        eval(km, env, expr).map(Some)
     } else {
         todo!()
     }

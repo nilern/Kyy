@@ -70,7 +70,8 @@ fn atom<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
         },
         Token::Integer(n) => {
             let tok = tokens.next().unwrap()?;
-            Ok(Const::new(km, tok.filename, tok.span, Int::new(km, n).as_obj()).into())
+            let n = Int::new(km, n).as_obj();
+            Ok(Const::new(km, tok.filename, tok.span, n).into())
         },
         Token::True => {
             let tok = tokens.next().unwrap()?;
@@ -93,12 +94,14 @@ fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseRe
             Some(Token::Star) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                l = Mul::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Mul::new(km, filename, l, r).into();
             },
             Some(Token::Slash) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                l = Div::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Div::new(km, filename, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -114,12 +117,14 @@ fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'
             Some(Token::Plus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                l = Add::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Add::new(km, filename, l, r).into();
             },
             Some(Token::Minus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                l = Sub::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Sub::new(km, filename, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -136,32 +141,38 @@ fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
             Some(Token::Lt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Lt::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Lt::new(km, filename, l, r).into();
             },
             Some(Token::Le) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Le::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Le::new(km, filename, l, r).into();
             },
             Some(Token::Eq) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Eq::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Eq::new(km, filename, l, r).into();
             },
             Some(Token::Ne) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Ne::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Ne::new(km, filename, l, r).into();
             },
             Some(Token::Gt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Gt::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Gt::new(km, filename, l, r).into();
             },
             Some(Token::Ge) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                l = Ge::new(km, l.filename(km), l, r).into();
+                let filename = l.clone().filename(km);
+                l = Ge::new(km, filename, l, r).into();
             },
             _ => return Ok(l)
         }
@@ -225,14 +236,22 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
                 Some(Token::Assign) => {
                     let lvalue_tok = tokens.next().unwrap()?;
                     let rvalue = expr(km, tokens)?;
-                    let span = lvalue_tok.span.start..isize::from(rvalue.end(km)).try_into().unwrap();
-                    Ok(Assign::new(km, id.filename, span, String::new(km, name), rvalue).into())
+                    let span = lvalue_tok.span.start
+                        ..isize::from(rvalue.clone().end(km)).try_into().unwrap();
+                    let name = String::new(km, name);
+                    Ok(Assign::new(km, id.filename, span, name, rvalue).into())
                 },
-                _ => Ok(ExprStmt::new(km, Var::new(km, id.filename, id.span, name).into()).into())
+                _ => {
+                    let expr = Var::new(km, id.filename, id.span, name);
+                    Ok(ExprStmt::new(km, expr.into()).into())
+                }
             }
         },
 
-        Token::Integer(_) | Token::True | Token::False => Ok(ExprStmt::new(km, expr(km, tokens)?).into()),
+        Token::Integer(_) | Token::True | Token::False => {
+            let expr = expr(km, tokens)?;
+            Ok(ExprStmt::new(km, expr).into())
+        },
 
         tok => Err(tokens.here(Error::UnexpectedToken(tok)))
     };

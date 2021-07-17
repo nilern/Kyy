@@ -35,7 +35,7 @@ impl Root<String> {
 
     /// Safety: the returned slice must not be live across a safepoint
     pub unsafe fn as_str(&self) -> &str {
-        str::from_utf8_unchecked(slice::from_raw_parts(transmute(self), self.len()))
+        str::from_utf8_unchecked(slice::from_raw_parts(transmute(self.as_ref()), self.clone().len()))
     }
 }
 

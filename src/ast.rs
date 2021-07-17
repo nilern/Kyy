@@ -16,8 +16,18 @@ pub struct Expr {
     end: Gc<Int>
 }
 
+impl Expr {
+    fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Expr {
+        Expr {
+            filename: filename.oref(),
+            start: start.oref(),
+            end: end.oref()
+        }
+    }
+}
+
 impl Root<Expr> {
-    pub fn filename(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
+    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
 
     pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
 
@@ -25,8 +35,8 @@ impl Root<Expr> {
 
     pub fn here<T>(self, km: &mut KyyMutator, value: T) -> Spanning<T> {
         Spanning {
-            filename: self.filename(km),
-            span: isize::from(self.start(km)).try_into().unwrap()
+            filename: self.clone().filename(km),
+            span: isize::from(self.clone().start(km)).try_into().unwrap()
                 ..isize::from(self.end(km)).try_into().unwrap(),
             value
         }
@@ -48,15 +58,10 @@ macro_rules! binary_node {
             pub fn new(km: &mut KyyMutator, filename: Root<String>,
                  left: Root<Expr>, right: Root<Expr>
             ) -> Root<$name> {
-                Self::alloc(km, Self {
-                    base: Expr {
-                        filename: filename.oref(),
-                        start: left.start(km).oref(),
-                        end: right.end(km).oref()
-                    },
-                    left: left.oref(),
-                    right: right.oref()
-                })
+                let start = left.clone().start(km);
+                let end = right.clone().end(km);
+                let base = Expr::new(filename, start, end);
+                Self::alloc(km, Self {base, left: left.oref(), right: right.oref()})
             }
         }
 
@@ -65,9 +70,9 @@ macro_rules! binary_node {
         }
 
         impl Root<$name> {
-            pub fn left(self, km: &KyyMutator) -> Root<Expr> { km.root(self.as_ref().left) }
+            pub fn left(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().left) }
 
-            pub fn right(self, km: &KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
+            pub fn right(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
         }
     }
 }
@@ -94,14 +99,11 @@ unsafe impl KyySizedSlotsType for Var {}
 
 impl Var {
     pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, name: &str) -> Root<Var> {
-        Self::alloc(km, Var {
-            base: Expr {
-                filename: filename.oref(),
-                start: Int::new(km, span.start.try_into().unwrap()).oref(),
-                end: Int::new(km, span.end.try_into().unwrap()).oref()
-            },
-            name: String::new(km, name).oref()
-        })
+        let start = Int::new(km, span.start.try_into().unwrap());
+        let end = Int::new(km, span.end.try_into().unwrap());
+        let base = Expr::new(filename, start, end);
+        let name = String::new(km, name).oref();
+        Self::alloc(km, Var {base, name})
     }
 }
 
@@ -110,7 +112,7 @@ impl From<Root<Var>> for Root<Expr> {
 }
 
 impl Root<Var> {
-    pub fn name(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().name) }
+    pub fn name(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().name) }
 }
 
 #[repr(C)]
@@ -124,14 +126,10 @@ unsafe impl KyySizedSlotsType for Const {}
 impl Const {
     pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, value: Root<Object>
     ) -> Root<Const> {
-        Self::alloc(km, Const {
-            base: Expr {
-                filename: filename.oref(),
-                start: Int::new(km, span.start.try_into().unwrap()).oref(),
-                end: Int::new(km, span.end.try_into().unwrap()).oref(),
-            },
-            value: value.oref()
-        })
+        let start = Int::new(km, span.start.try_into().unwrap());
+        let end = Int::new(km, span.end.try_into().unwrap());
+        let base = Expr::new(filename, start, end);
+        Self::alloc(km, Const {base, value: value.oref()})
     }
 }
 
@@ -140,7 +138,7 @@ impl From<Root<Const>> for Root<Expr> {
 }
 
 impl Root<Const> {
-    pub fn value(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().value) }
+    pub fn value(self, km: &mut KyyMutator) -> Root<Object> { km.root(self.as_ref().value) }
 }
 
 #[repr(C)]
@@ -150,8 +148,18 @@ pub struct Stmt {
     end: Gc<Int>
 }
 
+impl Stmt {
+    fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Stmt {
+        Stmt {
+            filename: filename.oref(),
+            start: start.oref(),
+            end: end.oref()
+        }
+    }
+}
+
 impl Root<Stmt> {
-    pub fn filename(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
+    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
 
     pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
 
@@ -168,13 +176,12 @@ unsafe impl KyySizedSlotsType for ExprStmt {}
 
 impl ExprStmt {
     pub fn new(km: &mut KyyMutator, expr: Root<Expr>) -> Root<ExprStmt> {
+        let filename = expr.clone().filename(km);
+        let start = expr.clone().start(km);
+        let end = expr.clone().end(km);
         Self::alloc(km, ExprStmt {
-            base: Stmt {
-                filename: expr.filename(km).oref(),
-                start: expr.start(km).oref(),
-                end: expr.end(km).oref(),
-            },
-            expr: expr.oref(),
+            base: Stmt::new(filename, start, end),
+            expr: expr.oref()
         })
     }
 }
@@ -201,12 +208,9 @@ impl If {
     pub fn new(km: &mut KyyMutator, filename: Root<String>, start: usize, end: Root<Int>,
         condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
     ) -> Root<If> {
+        let start = Int::new(km, start.try_into().unwrap());
         Self::alloc(km, If {
-            base: Stmt {
-                filename: filename.oref(),
-                start: Int::new(km, start.try_into().unwrap()).oref(),
-                end: end.oref(),
-            },
+            base: Stmt::new(filename, start, end),
             condition: condition.oref(),
             conseq: conseq.oref(),
             alt: alt.oref()
@@ -239,12 +243,10 @@ impl Assign {
     pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>,
         lvalue: Root<String>, rvalue: Root<Expr>
     ) -> Root<Assign> {
+        let start = Int::new(km, span.start.try_into().unwrap());
+        let end = Int::new(km, span.end.try_into().unwrap());
         Self::alloc(km, Assign {
-            base: Stmt {
-                filename: filename.oref(),
-                start: Int::new(km, span.start.try_into().unwrap()).oref(),
-                end: Int::new(km, span.end.try_into().unwrap()).oref()
-            },
+            base: Stmt::new(filename, start, end),
             left: lvalue.oref(),
             right: rvalue.oref()
         })
