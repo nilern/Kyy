@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use super::lexer::{self, Token, TokenTag, KyyLexer, Located};
 use super::ast::*;
 use super::mutator::KyyMutator;
@@ -91,14 +93,12 @@ fn multiplicative<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseRe
             Some(Token::Star) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Mul::new(km, l.filename(km), span, l, r).into();
+                l = Mul::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Slash) => {
                 let _ = tokens.next();
                 let r = atom(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Div::new(km, l.filename(km), span, l, r).into();
+                l = Div::new(km, l.filename(km), l, r).into();
             },
             _ => return Ok(l)
         }
@@ -114,14 +114,12 @@ fn additive<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'
             Some(Token::Plus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Add::new(km, l.filename(km), span, l, r).into();
+                l = Add::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Minus) => {
                 let _ = tokens.next();
                 let r = multiplicative(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Sub::new(km, l.filename(km), span, l, r).into();
+                l = Sub::new(km, l.filename(km), l, r).into();
             },
             _ => return Ok(l)
         }
@@ -138,38 +136,32 @@ fn comparison<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult
             Some(Token::Lt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Lt::new(km, l.filename(km), span, l, r).into();
+                l = Lt::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Le) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Le::new(km, l.filename(km), span, l, r).into();
+                l = Le::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Eq) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Eq::new(km, l.filename(km), span, l, r).into();
+                l = Eq::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Ne) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Ne::new(km, l.filename(km), span, l, r).into();
+                l = Ne::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Gt) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Gt::new(km, l.filename(km), span, l, r).into();
+                l = Gt::new(km, l.filename(km), l, r).into();
             },
             Some(Token::Ge) => {
                 let _ = tokens.next();
                 let r = additive(km, tokens)?;
-                let span = l.start()..r.end();
-                l = Ge::new(km, l.filename(km), span, l, r).into();
+                l = Ge::new(km, l.filename(km), l, r).into();
             },
             _ => return Ok(l)
         }
@@ -231,7 +223,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
                 Some(Token::Assign) => {
                     let lvalue_tok = tokens.next().unwrap()?;
                     let rvalue = expr(km, tokens)?;
-                    let span = lvalue_tok.span.start..rvalue.end();
+                    let span = lvalue_tok.span.start..isize::from(rvalue.end(km)).try_into().unwrap();
                     Ok(Assign::new(km, id.filename, span, String::new(km, name), rvalue).into())
                 },
                 _ => Ok(ExprStmt::new(km, Var::new(km, id.filename, id.span, name).into()).into())

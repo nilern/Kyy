@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::ops::Range;
 
 use super::object::Object;
@@ -17,9 +18,9 @@ pub struct Expr {
 impl Root<Expr> {
     pub fn filename(self, km: &KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
 
-    pub fn start(self) -> isize { self.as_ref().start.into() }
+    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
 
-    pub fn end(self) -> isize { self.as_ref().end.into() }
+    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().end) }
 }
 
 macro_rules! binary_node {
@@ -34,14 +35,14 @@ macro_rules! binary_node {
         unsafe impl KyySizedSlotsType for $name {}
 
         impl $name {
-            pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>,
+            pub fn new(km: &mut KyyMutator, filename: Root<String>,
                  left: Root<Expr>, right: Root<Expr>
             ) -> Root<$name> {
                 Self::alloc(km, Self {
                     base: Expr {
                         filename: filename.oref(),
-                        start: Int::new(km, span.start).oref(),
-                        end: Int::new(km, span.end).oref()
+                        start: left.start(km).oref(),
+                        end: right.end(km).oref()
                     },
                     left: left.oref(),
                     right: right.oref()
@@ -82,12 +83,12 @@ pub struct Var {
 unsafe impl KyySizedSlotsType for Var {}
 
 impl Var {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>, name: &str) -> Root<Var> {
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, name: &str) -> Root<Var> {
         Self::alloc(km, Var {
             base: Expr {
                 filename: filename.oref(),
-                start: Int::new(km, span.start).oref(),
-                end: Int::new(km, span.end).oref()
+                start: Int::new(km, span.start.try_into().unwrap()).oref(),
+                end: Int::new(km, span.end.try_into().unwrap()).oref()
             },
             name: String::new(km, name).oref()
         })
@@ -111,13 +112,13 @@ pub struct Const {
 unsafe impl KyySizedSlotsType for Const {}
 
 impl Const {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>, value: Root<Object>
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, value: Root<Object>
     ) -> Root<Const> {
         Self::alloc(km, Const {
             base: Expr {
                 filename: filename.oref(),
-                start: Int::new(km, span.start).oref(),
-                end: Int::new(km, span.end).oref(),
+                start: Int::new(km, span.start.try_into().unwrap()).oref(),
+                end: Int::new(km, span.end.try_into().unwrap()).oref(),
             },
             value: value.oref()
         })
@@ -152,8 +153,8 @@ impl ExprStmt {
         Self::alloc(km, ExprStmt {
             base: Stmt {
                 filename: expr.filename(km).oref(),
-                start: Int::new(km, expr.start()).oref(),
-                end: Int::new(km, expr.end()).oref(),
+                start: expr.start(km).oref(),
+                end: expr.end(km).oref(),
             },
             expr: expr.oref(),
         })
@@ -179,14 +180,14 @@ pub struct If {
 unsafe impl KyySizedSlotsType for If {}
 
 impl If {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>,
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>,
         condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
     ) -> Root<If> {
         Self::alloc(km, If {
             base: Stmt {
                 filename: filename.oref(),
-                start: Int::new(km, span.start).oref(),
-                end: Int::new(km, span.end).oref(),
+                start: Int::new(km, span.start.try_into().unwrap()).oref(),
+                end: Int::new(km, span.end.try_into().unwrap()).oref(),
             },
             condition: condition.oref(),
             conseq: conseq.oref(),
@@ -217,14 +218,14 @@ pub struct Assign {
 unsafe impl KyySizedSlotsType for Assign {}
 
 impl Assign {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>,
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>,
         lvalue: Root<String>, rvalue: Root<Expr>
     ) -> Root<Assign> {
         Self::alloc(km, Assign {
             base: Stmt {
                 filename: filename.oref(),
-                start: Int::new(km, span.start).oref(),
-                end: Int::new(km, span.end).oref()
+                start: Int::new(km, span.start.try_into().unwrap()).oref(),
+                end: Int::new(km, span.end.try_into().unwrap()).oref()
             },
             left: lvalue.oref(),
             right: rvalue.oref()
