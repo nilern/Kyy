@@ -48,8 +48,9 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
 pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root<Object>> {
     use ast::*;
 
-    let expr: Root<Object> = expr.as_obj(); // HACK
-    let res =
+    let res = {
+        let expr: Root<Object> = expr.as_obj(); // HACK
+
         if let Some(expr) = Add::downcast(km, expr) {
             let l = eval(km, env, expr.left(km))?;
             let r = eval(km, env, expr.right(km))?;
@@ -104,9 +105,10 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 
         } else {
             todo!()
-        };
+        }
+    };
 
-    res.map_err(|err| expr.here(err))
+    res.map_err(|err| expr.here(km, err))
 }
 
 fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {

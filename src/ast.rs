@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use std::ops::Range;
 
+use super::lexer::Spanning;
 use super::object::Object;
 use super::orefs::{Gc, Root};
 use super::mutator::{KyySizedSlotsType, KyyMutator};
@@ -21,6 +22,15 @@ impl Root<Expr> {
     pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
 
     pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().end) }
+
+    pub fn here<T>(self, km: &mut KyyMutator, value: T) -> Spanning<T> {
+        Spanning {
+            filename: self.filename(km),
+            span: isize::from(self.start(km)).try_into().unwrap()
+                ..isize::from(self.end(km)).try_into().unwrap(),
+            value
+        }
+    }
 }
 
 macro_rules! binary_node {
