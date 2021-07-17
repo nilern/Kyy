@@ -82,10 +82,10 @@ pub struct Var {
 unsafe impl KyySizedSlotsType for Var {}
 
 impl Var {
-    pub fn new(km: &mut KyyMutator, filename: &str, span: Range<isize>, name: &str) -> Root<Var> {
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>, name: &str) -> Root<Var> {
         Self::alloc(km, Var {
             base: Expr {
-                filename: String::new(km, filename).oref(),
+                filename: filename.oref(),
                 start: Int::new(km, span.start).oref(),
                 end: Int::new(km, span.end).oref()
             },
@@ -111,11 +111,11 @@ pub struct Const {
 unsafe impl KyySizedSlotsType for Const {}
 
 impl Const {
-    pub fn new(km: &mut KyyMutator, filename: &str, span: Range<isize>, value: Root<Object>
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>, value: Root<Object>
     ) -> Root<Const> {
         Self::alloc(km, Const {
             base: Expr {
-                filename: String::new(km, filename).oref(),
+                filename: filename.oref(),
                 start: Int::new(km, span.start).oref(),
                 end: Int::new(km, span.end).oref(),
             },
@@ -179,12 +179,12 @@ pub struct If {
 unsafe impl KyySizedSlotsType for If {}
 
 impl If {
-    pub fn new(km: &mut KyyMutator, filename: &str, span: Range<isize>,
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>,
         condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
     ) -> Root<If> {
         Self::alloc(km, If {
             base: Stmt {
-                filename: String::new(km, filename).oref(),
+                filename: filename.oref(),
                 start: Int::new(km, span.start).oref(),
                 end: Int::new(km, span.end).oref(),
             },
@@ -217,12 +217,12 @@ pub struct Assign {
 unsafe impl KyySizedSlotsType for Assign {}
 
 impl Assign {
-    pub fn new(km: &mut KyyMutator, filename: &str, span: Range<isize>,
+    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<isize>,
         lvalue: Root<String>, rvalue: Root<Expr>
     ) -> Root<Assign> {
         Self::alloc(km, Assign {
             base: Stmt {
-                filename: String::new(km, filename).oref(),
+                filename: filename.oref(),
                 start: Int::new(km, span.start).oref(),
                 end: Int::new(km, span.end).oref()
             },

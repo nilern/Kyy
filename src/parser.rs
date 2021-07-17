@@ -1,7 +1,8 @@
 use super::lexer::{self, Token, TokenTag, KyyLexer, Located};
 use super::ast::*;
 use super::mutator::KyyMutator;
-use super::orefs::Root;
+use super::orefs::{Gc, Root};
+use super::object::Object;
 use super::tuple::Tuple;
 use super::string::String;
 use super::int::Int;
@@ -185,14 +186,14 @@ fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, 
     token(tokens, TokenTag::Newline)?;
     token(tokens, TokenTag::Indent)?;
 
-    let mut stmts = Vec::new();
-    stmts.push(stmt(km, tokens)?); // <stmt>
+    let mut stmts: Vec<Gc<Object>> = Vec::new();
+    stmts.push(stmt(km, tokens)?.oref().as_obj()); // <stmt>
     // <stmt>*
     while let Some(Token::If) | Some(Token::Identifier(_))
         | Some(Token::Integer(_)) | Some(Token::True) | Some(Token::False)
         = peek(tokens)?
     {
-        stmts.push(stmt(km, tokens)?);
+        stmts.push(stmt(km, tokens)?.oref().as_obj());
     }
 
     token(tokens, TokenTag::Dedent)?;
@@ -228,7 +229,7 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
             let id = tokens.next().unwrap()?;
             match peek(tokens)? { // ('=' <expr>)?
                 Some(Token::Assign) => {
-                    let lvalue_tok = tokens.next();
+                    let lvalue_tok = tokens.next().unwrap()?;
                     let rvalue = expr(km, tokens)?;
                     let span = lvalue_tok.span.start..rvalue.end();
                     Ok(Assign::new(km, id.filename, span, String::new(km, name), rvalue).into())

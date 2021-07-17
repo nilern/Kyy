@@ -3,18 +3,19 @@ use std::sync::Arc;
 use std::ops::Range;
 
 use super::orefs::Root;
+use super::string;
 
 #[derive(Clone)]
 pub struct Located<T> {
     pub value: T,
-    pub filename: Root<String>,
+    pub filename: Root<string::String>,
     pub offset: usize
 }
 
 #[derive(Clone)]
 pub struct Spanning<T> {
     pub value: T,
-    pub filename: Root<String>,
+    pub filename: Root<string::String>,
     pub span: Range<isize>
 }
 
