@@ -9,6 +9,7 @@ use super::orefs::{Gc, ORef};
 use super::object::Object;
 use super::granule::{Granule, GSize};
 
+// TODO: Copying GC, to prove that `Root` really works safely (or not...)
 // TODO: Python None = ptr::null?
 
 impl<T> Gc<T> {

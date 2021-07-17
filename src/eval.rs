@@ -43,7 +43,21 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     }
 
     Err(Error::TypeError(vec![l, r]))
-} 
+}
+
+fn as_bool(km: &KyyMutator, v: Root<Object>) -> bool {
+    if let Some(b) = Bool::downcast(km, v.clone()) {
+        b.into()
+    } else if let Some(n) = Int::downcast(km, v.clone()) {
+        isize::from(n) != 0
+    } else if let Some(str) = string::String::downcast(km, v.clone()) {
+        str.len() > 0
+    } else if let Some(vs) = Tuple::downcast(km, v) {
+        vs.len() > 0
+    } else {
+        true
+    }
+}
 
 pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root<Object>> {
     use ast::*;
@@ -146,31 +160,21 @@ pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<
     if let Some(stmt) = ast::If::downcast(km, stmt.clone()) {
         let cond = stmt.clone().condition(km);
         let cond = eval(km, env, cond)?;
-        // HACK:
-        if let Some(b) = Bool::downcast(km, cond.clone()) {
-            if b.into() {
-                let conseq = stmt.conseq(km);
-                exec_block(km, env, conseq)
-            } else {
-                let alt = stmt.alt(km);
-                exec_block(km, env, alt)
-            }
-        } else if let Some(n) = Int::downcast(km, cond) {
-            if isize::from(n) != 0 {
-                let conseq = stmt.conseq(km);
-                exec_block(km, env, conseq)
-            } else {
-                let alt = stmt.alt(km);
-                exec_block(km, env, alt)
-            }
+
+        if as_bool(km, cond) {
+            let conseq = stmt.conseq(km);
+            exec_block(km, env, conseq)
         } else {
-            todo!()
+            let alt = stmt.alt(km);
+            exec_block(km, env, alt)
         }
     } else if let Some(stmt) = ast::Assign::downcast(km, stmt.clone()) {
         let rvalue = stmt.clone().rvalue(km);
         let rvalue = eval(km, env, rvalue)?;
+
         let var = stmt.var(km);
         env.insert(unsafe { var.as_str().to_string() }, rvalue);
+
         Ok(None)
     } else if let Some(stmt) = ast::ExprStmt::downcast(km, stmt) {
         let expr = stmt.expr(km);
