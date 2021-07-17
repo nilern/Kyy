@@ -189,18 +189,21 @@ fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, 
     token(tokens, TokenTag::Newline)?;
     token(tokens, TokenTag::Indent)?;
 
-    let mut stmts: Vec<Gc<Object>> = Vec::new();
-    stmts.push(stmt(km, tokens)?.oref().as_obj()); // <stmt>
+    let mut stmts: Vec<Root<Stmt>> = Vec::new();
+    stmts.push(stmt(km, tokens)?); // <stmt>
     // <stmt>*
     while let Some(Token::If) | Some(Token::Identifier(_))
         | Some(Token::Integer(_)) | Some(Token::True) | Some(Token::False)
         = peek(tokens)?
     {
-        stmts.push(stmt(km, tokens)?.oref().as_obj());
+        stmts.push(stmt(km, tokens)?);
     }
 
     token(tokens, TokenTag::Dedent)?;
 
+    let stmts: Vec<Gc<Object>> = stmts.iter()
+        .map(|stmt| unsafe { stmt.oref() }.as_obj() )
+        .collect();
     Ok(Tuple::new(km, &stmts))
 }
 
@@ -224,8 +227,9 @@ fn stmt<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, R
                 Some(Token::Else) => else_block(km, tokens)?,
                 _ => Tuple::new(km, &[])
             };
-            let end = km.root(conseq.slots()[conseq.len() - 1]) // conseq.len() >= 1
-                .unchecked_cast::<Stmt>().end(km);
+            let end = unsafe { km.root(conseq.slots()[conseq.len() - 1]) // conseq.len() >= 1
+                .unchecked_cast::<Stmt>().end(km)
+            };
             return Ok(If::new(km, if_tok.filename, if_tok.span.start, end,
                               condition, conseq, alt).into());
         },

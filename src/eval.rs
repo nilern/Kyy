@@ -115,7 +115,7 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 
         } else if let Some(expr) = Var::downcast(km, expr.clone()) {
             let name = expr.name(km);
-            match env.get(name.as_str()) {
+            match unsafe { env.get(name.as_str()) } {
                 Some(v) => Ok(v.clone()),
                 None => Err(Error::Unbound(name))
             }
@@ -134,7 +134,7 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
     for i in 0..stmts.len() {
-        let stmt = km.root(stmts.slots()[i]).unchecked_cast();
+        let stmt = unsafe { km.root(stmts.slots()[i]).unchecked_cast() };
         res = exec(km, env, stmt)?;
     }
     Ok(res)
@@ -170,7 +170,7 @@ pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<
         let rvalue = stmt.clone().rvalue(km);
         let rvalue = eval(km, env, rvalue)?;
         let var = stmt.var(km);
-        env.insert(var.as_str().to_string(), rvalue);
+        env.insert(unsafe { var.as_str().to_string() }, rvalue);
         Ok(None)
     } else if let Some(stmt) = ast::ExprStmt::downcast(km, stmt) {
         let expr = stmt.expr(km);

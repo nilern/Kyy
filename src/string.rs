@@ -25,7 +25,7 @@ impl String {
 }
 
 impl Debug for Root<String> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result { self.as_str().fmt(f) }
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result { unsafe { self.as_str() }.fmt(f) }
 }
 
 impl Root<String> {

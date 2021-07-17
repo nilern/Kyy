@@ -17,7 +17,7 @@ pub struct Expr {
 }
 
 impl Expr {
-    fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Expr {
+    unsafe fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Expr {
         Expr {
             filename: filename.oref(),
             start: start.oref(),
@@ -27,11 +27,11 @@ impl Expr {
 }
 
 impl Root<Expr> {
-    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
+    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().filename }) }
 
-    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
+    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().start }) }
 
-    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().end) }
+    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().end }) }
 
     pub fn here<T>(self, km: &mut KyyMutator, value: T) -> Spanning<T> {
         Spanning {
@@ -60,19 +60,21 @@ macro_rules! binary_node {
             ) -> Root<$name> {
                 let start = left.clone().start(km);
                 let end = right.clone().end(km);
-                let base = Expr::new(filename, start, end);
-                Self::alloc(km, Self {base, left: left.oref(), right: right.oref()})
+                unsafe {
+                    let base = Expr::new(filename, start, end);
+                    Self::alloc(km, Self {base, left: left.oref(), right: right.oref()})
+                }
             }
         }
 
         impl From<Root<$name>> for Root<Expr> {
-            fn from(expr: Root<$name>) -> Root<Expr> { expr.unchecked_cast() }
+            fn from(expr: Root<$name>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
         }
 
         impl Root<$name> {
-            pub fn left(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().left) }
+            pub fn left(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().left }) }
 
-            pub fn right(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
+            pub fn right(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().right }) }
         }
     }
 }
@@ -101,18 +103,20 @@ impl Var {
     pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, name: &str) -> Root<Var> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
-        let base = Expr::new(filename, start, end);
-        let name = String::new(km, name).oref();
-        Self::alloc(km, Var {base, name})
+        unsafe {
+            let base = Expr::new(filename, start, end);
+            let name = String::new(km, name).oref();
+            Self::alloc(km, Var {base, name})
+        }
     }
 }
 
 impl From<Root<Var>> for Root<Expr> {
-    fn from(expr: Root<Var>) -> Root<Expr> { expr.unchecked_cast() }
+    fn from(expr: Root<Var>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
 }
 
 impl Root<Var> {
-    pub fn name(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().name) }
+    pub fn name(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().name }) }
 }
 
 #[repr(C)]
@@ -128,17 +132,19 @@ impl Const {
     ) -> Root<Const> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
-        let base = Expr::new(filename, start, end);
-        Self::alloc(km, Const {base, value: value.oref()})
+        unsafe {
+            let base = Expr::new(filename, start, end);
+            Self::alloc(km, Const {base, value: value.oref()})
+        }
     }
 }
 
 impl From<Root<Const>> for Root<Expr> {
-    fn from(expr: Root<Const>) -> Root<Expr> { expr.unchecked_cast() }
+    fn from(expr: Root<Const>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
 }
 
 impl Root<Const> {
-    pub fn value(self, km: &mut KyyMutator) -> Root<Object> { km.root(self.as_ref().value) }
+    pub fn value(self, km: &mut KyyMutator) -> Root<Object> { km.root(unsafe { self.as_ref().value }) }
 }
 
 #[repr(C)]
@@ -149,7 +155,7 @@ pub struct Stmt {
 }
 
 impl Stmt {
-    fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Stmt {
+    unsafe fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Stmt {
         Stmt {
             filename: filename.oref(),
             start: start.oref(),
@@ -159,11 +165,11 @@ impl Stmt {
 }
 
 impl Root<Stmt> {
-    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().filename) }
+    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().filename }) }
 
-    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().start) }
+    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().start }) }
 
-    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(self.as_ref().end) }
+    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().end }) }
 }
 
 #[repr(C)]
@@ -179,19 +185,21 @@ impl ExprStmt {
         let filename = expr.clone().filename(km);
         let start = expr.clone().start(km);
         let end = expr.clone().end(km);
-        Self::alloc(km, ExprStmt {
-            base: Stmt::new(filename, start, end),
-            expr: expr.oref()
-        })
+        unsafe {
+            Self::alloc(km, ExprStmt {
+                base: Stmt::new(filename, start, end),
+                expr: expr.oref()
+            })
+        }
     }
 }
 
 impl From<Root<ExprStmt>> for Root<Stmt> {
-    fn from(expr: Root<ExprStmt>) -> Root<Stmt> { expr.unchecked_cast() }
+    fn from(expr: Root<ExprStmt>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
 impl Root<ExprStmt> {
-    pub fn expr(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().expr) }
+    pub fn expr(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().expr }) }
 }
 
 #[repr(C)]
@@ -209,25 +217,27 @@ impl If {
         condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
     ) -> Root<If> {
         let start = Int::new(km, start.try_into().unwrap());
-        Self::alloc(km, If {
-            base: Stmt::new(filename, start, end),
-            condition: condition.oref(),
-            conseq: conseq.oref(),
-            alt: alt.oref()
-        })
+        unsafe {
+            Self::alloc(km, If {
+                base: Stmt::new(filename, start, end),
+                condition: condition.oref(),
+                conseq: conseq.oref(),
+                alt: alt.oref()
+            })
+        }
     }
 }
 
 impl From<Root<If>> for Root<Stmt> {
-    fn from(expr: Root<If>) -> Root<Stmt> { expr.unchecked_cast() }
+    fn from(expr: Root<If>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
 impl Root<If> {
-    pub fn condition(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().condition) }
+    pub fn condition(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().condition }) }
 
-    pub fn conseq(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(self.as_ref().conseq) }
+    pub fn conseq(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(unsafe { self.as_ref().conseq }) }
 
-    pub fn alt(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(self.as_ref().alt) }
+    pub fn alt(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(unsafe { self.as_ref().alt }) }
 }
 
 #[repr(C)]
@@ -245,21 +255,23 @@ impl Assign {
     ) -> Root<Assign> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
-        Self::alloc(km, Assign {
-            base: Stmt::new(filename, start, end),
-            left: lvalue.oref(),
-            right: rvalue.oref()
-        })
+        unsafe {
+            Self::alloc(km, Assign {
+                base: Stmt::new(filename, start, end),
+                left: lvalue.oref(),
+                right: rvalue.oref()
+            })
+        }
     }
 }
 
 impl From<Root<Assign>> for Root<Stmt> {
-    fn from(expr: Root<Assign>) -> Root<Stmt> { expr.unchecked_cast() }
+    fn from(expr: Root<Assign>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
 impl Root<Assign> {
-    pub fn var(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().left) }
+    pub fn var(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().left }) }
 
-    pub fn rvalue(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
+    pub fn rvalue(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().right }) }
 }
 

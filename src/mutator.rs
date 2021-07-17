@@ -292,7 +292,7 @@ impl KyyMutator {
     }
 
     pub fn root<T>(&mut self, oref: Gc<T>) -> Root<T> {
-        let root = Root::untracked(oref);
+        let root = unsafe { Root::untracked(oref) }; // Safety: untracked -> tracked on next line
         self.roots.push(root.clone().as_obj());
         root
     }
