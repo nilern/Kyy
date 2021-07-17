@@ -114,6 +114,41 @@ impl Header {
 
 // ---
 
+struct Semispace {
+    start: *mut u8,
+    end: *mut u8
+}
+
+impl Drop for Semispace {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.start as _, Layout::from_size_align_unchecked(self.size(), align_of::<Granule>()));
+        }
+    }
+}
+
+impl Semispace {
+    fn new(max_size: usize) -> Option<Semispace> {
+        unsafe {
+            let max_gsize = GSize::from(max_size / size_of::<Granule>());
+            let max_size = max_gsize.in_bytes(); // rounded down, unlike `GSize::in_granules`
+            let start = alloc_zeroed(Layout::from_size_align_unchecked(max_size, align_of::<Granule>()));
+            if !start.is_null() {
+                Some(Semispace {
+                    start,
+                    end: start.add(max_size)
+                })
+            } else {
+                None
+            }
+        }
+    }
+
+    fn size(&self) -> usize { self.end as usize - self.start as usize }
+}
+
+// ---
+
 #[repr(C)]
 struct FreeListNode {
     heading: usize,
