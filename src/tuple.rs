@@ -45,13 +45,13 @@ mod tests {
     #[test]
     fn alloc() {
         let mut km = KyyMutator::new(1000).unwrap();
-        let vs = [Int::new(&mut km, Int(3)), Int::new(&mut km, Int(2)), Int::new(&mut km, Int(1))];
+        let vs = [Int::new(&mut km, 3), Int::new(&mut km, 2), Int::new(&mut km, 1)];
         let tvs: Vec<Gc<Object>> = vs.iter().map(|root| unsafe { root.oref().as_obj() }).collect();
         let tup = Tuple::new(&mut km, &tvs);
 
         unsafe {
-            assert_eq!(tup.as_ref().len(), 3);
-            for (tv, v) in tup.as_ref().slots().iter().zip(vs.iter()) {
+            assert_eq!(tup.len(), 3);
+            for (tv, v) in tup.slots().iter().zip(vs.iter()) {
                 assert!(ORef::from(*tv).is(v.oref().into()));
             }
         }

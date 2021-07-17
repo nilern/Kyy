@@ -49,7 +49,7 @@ mod tests {
         let cs = "foo";
         let s = String::new(&mut km, &cs);
 
-        unsafe { assert_eq!(s.as_ref().as_str(), cs); }
+        unsafe { assert_eq!(s.as_str(), cs); }
     }
 }
 
