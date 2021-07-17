@@ -158,7 +158,11 @@ impl KyyMutator {
             // OPTIMIZE: Make the empty tuple a singleton?:
             let empty_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 0)?.unchecked_cast();
             let mut obj_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
-            obj_bases.as_mut_ptr().write(object_typ);
+            {
+                let obj_bases: &mut [Gc<Object>] = slice::from_raw_parts_mut(
+                    obj_bases.as_mut_ptr() as *mut Gc<Object>, 1);
+                obj_bases.copy_from_slice(&[object_typ.as_obj()]);
+            }
 
             // Backpatch `<class 'type'>` header:
             *type_typ.header_mut().class_mut() = type_typ.into();
@@ -183,7 +187,11 @@ impl KyyMutator {
             expr_typ.as_mut_ptr().write(Type {bases: obj_bases});
 
             let expr_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
-            expr_bases.as_mut_ptr().write(expr_typ);
+            {
+                let expr_bases: &mut [Gc<Object>] = slice::from_raw_parts_mut(
+                    expr_bases.as_mut_ptr() as *mut Gc<Object>, 1);
+                expr_bases.copy_from_slice(&[expr_typ.as_obj()]);
+            }
 
             let add_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
@@ -228,7 +236,11 @@ impl KyyMutator {
             stmt_typ.as_mut_ptr().write(Type {bases: obj_bases});
 
             let stmt_bases: Gc<Tuple> = heap.alloc_slots(tuple_typ.into(), 1)?.unchecked_cast();
-            stmt_bases.as_mut_ptr().write(stmt_typ);
+            {
+                let obj_bases: &mut [Gc<Object>] = slice::from_raw_parts_mut(
+                    obj_bases.as_mut_ptr() as *mut Gc<Object>, 1);
+                obj_bases.copy_from_slice(&[object_typ.as_obj()]);
+            }
 
             let expr_stmt_typ: Gc<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();

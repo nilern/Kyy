@@ -24,8 +24,8 @@ impl String {
 }
 
 impl Root<String> {
-    pub fn len(&self) -> usize {
-        (unsafe { self.header().size() } - size_of::<Header>()).into()
+    pub fn len(self) -> usize {
+        (unsafe { self.as_ref().header().size() } - size_of::<Header>()).into()
     }
 
     /// Safety: the returned slice must not be live across a safepoint

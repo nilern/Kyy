@@ -2,17 +2,19 @@ use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 use std::ops::Range;
 
-#[derive(Debug, Clone)]
+use super::orefs::Root;
+
+#[derive(Clone)]
 pub struct Located<T> {
     pub value: T,
-    pub filename: Option<Arc<String>>,
+    pub filename: Root<String>,
     pub offset: usize
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Spanning<T> {
     pub value: T,
-    pub filename: Option<Arc<String>>,
+    pub filename: Root<String>,
     pub span: Range<isize>
 }
 

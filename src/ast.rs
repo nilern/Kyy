@@ -27,8 +27,8 @@ macro_rules! binary_node {
         #[repr(C)]
         pub struct $name {
             base: Expr,
-            left: Gc<Object>,
-            right: Gc<Object>
+            left: Gc<Expr>,
+            right: Gc<Expr>
         }
 
         unsafe impl KyySizedSlotsType for $name {}
@@ -43,8 +43,8 @@ macro_rules! binary_node {
                         start: Int::new(km, span.start).oref(),
                         end: Int::new(km, span.end).oref()
                     },
-                    left: left.oref().as_obj(),
-                    right: right.oref().as_obj()
+                    left: left.oref(),
+                    right: right.oref()
                 })
             }
         }
@@ -54,9 +54,9 @@ macro_rules! binary_node {
         }
 
         impl Root<$name> {
-            pub fn left(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().left) }
+            pub fn left(self, km: &KyyMutator) -> Root<Expr> { km.root(self.as_ref().left) }
 
-            pub fn right(self, km: &KyyMutator) -> Root<Object> { km.root(self.as_ref().right) }
+            pub fn right(self, km: &KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
         }
     }
 }
@@ -164,6 +164,10 @@ impl From<Root<ExprStmt>> for Root<Stmt> {
     fn from(expr: Root<ExprStmt>) -> Root<Stmt> { expr.unchecked_cast() }
 }
 
+impl Root<ExprStmt> {
+    pub fn expr(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().expr) }
+}
+
 #[repr(C)]
 pub struct If {
     base: Stmt,
@@ -195,11 +199,19 @@ impl From<Root<If>> for Root<Stmt> {
     fn from(expr: Root<If>) -> Root<Stmt> { expr.unchecked_cast() }
 }
 
+impl Root<If> {
+    pub fn condition(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().condition) }
+
+    pub fn conseq(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(self.as_ref().conseq) }
+
+    pub fn alt(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(self.as_ref().alt) }
+}
+
 #[repr(C)]
 pub struct Assign {
     base: Stmt,
     left: Gc<String>,
-    right: Gc<Object>,
+    right: Gc<Expr>,
 }
 
 unsafe impl KyySizedSlotsType for Assign {}
@@ -222,5 +234,11 @@ impl Assign {
 
 impl From<Root<Assign>> for Root<Stmt> {
     fn from(expr: Root<Assign>) -> Root<Stmt> { expr.unchecked_cast() }
+}
+
+impl Root<Assign> {
+    pub fn var(self, km: &mut KyyMutator) -> Root<String> { km.root(self.as_ref().left) }
+
+    pub fn rvalue(self, km: &mut KyyMutator) -> Root<Expr> { km.root(self.as_ref().right) }
 }
 

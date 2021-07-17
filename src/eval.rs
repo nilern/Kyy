@@ -21,7 +21,7 @@ type Env = HashMap<String, Root<Object>>;
 
 pub fn new_global_env() -> Env { HashMap::new() }
 
-fn arithmetic<F>(km: &mut KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
+fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> isize
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
@@ -33,7 +33,7 @@ fn arithmetic<F>(km: &mut KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
     Err(Error::TypeError(vec![l, r]))
 }
 
-fn comparison<F>(km: &KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
+fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> bool
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
@@ -48,6 +48,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<Expr>, r: Root<Expr>, f: F)
 pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root<Object>> {
     use ast::*;
 
+    let expr: Root<Object> = expr.as_obj(); // HACK
     let res =
         if let Some(expr) = Add::downcast(km, expr) {
             let l = eval(km, env, expr.left(km))?;
@@ -111,41 +112,39 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
 fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
     let mut res = None;
     for i in 0..stmts.as_ref().len() {
-        res = exec(km, env, km.root(stmts.as_ref().slots()[i]))?;
+        res = exec(km, env, km.root(stmts.as_ref().slots()[i]).unchecked_cast())?;
     }
     Ok(res)
 }
 
 pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<Option<Root<Object>>> {
-    if let Some(ast::If {condition, conseq, alt}) = ast::If::downcast(km, stmt)
-        .map(|root| unsafe { *root.as_ref() })
-    {
-        let conseq = km.root(conseq);
-        let alt = km.root(alt);
-        let cond = eval(km, env, km.root(condition))?;
+    let stmt: Root<Object> = stmt.as_obj(); // HACK
+
+    if let Some(stmt) = ast::If::downcast(km, stmt) {
+        let cond = eval(km, env, stmt.condition(km))?;
         // HACK:
-        if let Some(b) = Bool::downcast(km, cond.clone()) {
+        if let Some(b) = Bool::downcast(km, cond) {
             if b.into() {
-                exec_block(km, env, conseq)
+                exec_block(km, env, stmt.conseq(km))
             } else {
-                exec_block(km, env, alt)
+                exec_block(km, env, stmt.alt(km))
             }
         } else if let Some(n) = Int::downcast(km, cond) {
             if isize::from(n) != 0 {
-                exec_block(km, env, conseq)
+                exec_block(km, env, stmt.conseq(km))
             } else {
-                exec_block(km, env, alt)
+                exec_block(km, env, stmt.alt(km))
             }
         } else {
             todo!()
         }
-    } else if let Some(ast::Assign {left: var, right: rvalue}) = ast::Assign::downcast(km, stmt)
-        .map(|root| unsafe { *root.as_ref() })
-    {
-        env.insert(var.clone().as_ref().as_str().to_string(), eval(km, env, km.root(rvalue))?);
+    } else if let Some(stmt) = ast::Assign::downcast(km, stmt) {
+        env.insert(stmt.var(km).as_str().to_string(), eval(km, env, stmt.rvalue(km))?);
         Ok(None)
+    } else if let Some(stmt) = ast::ExprStmt::downcast(km, stmt) {
+        eval(km, env, stmt.expr(km)).map(Some)
     } else {
-        eval(km, env, stmt).map(Some)
+        todo!()
     }
 }
 
