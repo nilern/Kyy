@@ -1,7 +1,8 @@
 use intrusive_collections::{intrusive_adapter, SinglyLinkedListLink, UnsafeRef, SinglyLinkedList};
 use intrusive_collections::singly_linked_list;
 use std::alloc::{Layout, alloc_zeroed, dealloc};
-use std::mem::{transmute, size_of, align_of};
+use std::convert::TryFrom;
+use std::mem::{transmute, swap, size_of, align_of};
 use std::ptr::{self, NonNull};
 use std::slice;
 
@@ -33,6 +34,17 @@ impl<T> Gc<T> {
     }
 }
 
+impl ORef {
+    unsafe fn semis_mark(self, heap: &mut SemisHeap) -> ORef {
+        if let Ok(obj) = Gc::try_from(self) {
+            obj.semis_mark(heap).into()
+        } else {
+            self
+        }
+    }
+}
+
+
 // ---
 
 const TAG_BITCOUNT: u32 = 2;
@@ -61,6 +73,8 @@ impl Heading {
     fn filler(size: usize) -> Heading { Heading(size << TAG_BITCOUNT | BYTES_BIT) }
 
     fn is_bytes(&self) -> bool { (self.0 & BYTES_BIT) == BYTES_BIT }
+
+    fn raw_size(&self) -> usize { self.0 >> TAG_BITCOUNT }
 
     // OPTIMIZE: Don't include Header size (requires alignment hole recognizability).
     fn gsize(&self) -> GSize {
@@ -178,7 +192,8 @@ struct SemisHeap {
     fromspace: Semispace,
     tospace: Semispace,
     free_slots: *mut u8,
-    latest_bytes: *mut u8
+    latest_bytes: *mut u8,
+    grey: *mut u8
 }
 
 impl SemisHeap {
@@ -188,7 +203,7 @@ impl SemisHeap {
         let tospace = Semispace::new(initial_size / 2)?;
         let free_slots = tospace.start;
         let latest_bytes = tospace.end;
-        Some(Self {max_size, fromspace, tospace, free_slots, latest_bytes})
+        Some(Self {max_size, fromspace, tospace, free_slots, latest_bytes, grey: ptr::null_mut()})
     }
 
     unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<Object>> {
@@ -248,6 +263,35 @@ impl SemisHeap {
 
             ptr::copy_nonoverlapping(obj.as_mut_ptr() as *mut u8, new_obj.as_mut_ptr() as *mut u8, size);
             Some(new_obj.unchecked_cast())
+        }
+    }
+
+    // TODO: Heap expansion logic:
+    // FIXME: zero tospace before swap (or after collection):
+    unsafe fn prepare_gc(&mut self) {
+        swap(&mut self.fromspace, &mut self.tospace);
+        self.free_slots = self.tospace.start;
+        self.latest_bytes = self.tospace.end;
+        self.grey = self.free_slots;
+    }
+
+    unsafe fn mark_root(&mut self, root: ORef) -> ORef { root.semis_mark(self) }
+
+    unsafe fn gc(&mut self) {
+        while self.grey < self.free_slots {
+            let heading: *mut Heading = self.grey as _;
+            let len = (*heading).raw_size();
+
+            let class: *mut ORef = heading.add(1) as _;
+            *class = (*class).semis_mark(self);
+
+            let mut slot = class.add(1);
+            for _ in 0..len {
+                *slot = (*slot).semis_mark(self);
+                slot = slot.add(1);
+            }
+
+            self.grey = slot as *mut u8;
         }
     }
 }
