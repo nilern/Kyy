@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn singletons() {
-        let km = KyyMutator::new(1000).unwrap();
+        let km = KyyMutator::new(1 << 22).unwrap();
 
         assert_eq!(bool::from(Bool::new(&km, true)), true);
         assert_eq!(bool::from(Bool::new(&km, false)), false);

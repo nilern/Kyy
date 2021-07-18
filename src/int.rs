@@ -24,7 +24,7 @@ mod tests {
 
     #[test]
     fn alloc() {
-        let mut km = KyyMutator::new(1000).unwrap();
+        let mut km = KyyMutator::new(1 << 22).unwrap();
         let n = 12345;
         let m = Int::new(&mut km, n);
         assert_eq!(isize::from(m), n);

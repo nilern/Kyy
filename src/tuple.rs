@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn alloc() {
-        let mut km = KyyMutator::new(1000).unwrap();
+        let mut km = KyyMutator::new(1 << 22).unwrap();
         let vs = [Int::new(&mut km, 3), Int::new(&mut km, 2), Int::new(&mut km, 1)];
         let tvs: Vec<Gc<Object>> = vs.iter().map(|root| unsafe { root.oref().as_obj() }).collect();
         let tup = Tuple::new(&mut km, &tvs);

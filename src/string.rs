@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn alloc() {
-        let mut km = KyyMutator::new(1000).unwrap();
+        let mut km = KyyMutator::new(1 << 22).unwrap();
         let cs = "foo";
         let s = String::new(&mut km, &cs);
 
