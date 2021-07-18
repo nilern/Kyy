@@ -148,7 +148,6 @@ pub struct Heap {
     tospace: Semispace,
     free_slots: *mut u8,
     latest_bytes: *mut u8,
-    grey: *mut u8
 }
 
 impl Heap {
@@ -161,7 +160,7 @@ impl Heap {
         let tospace = Semispace::new(initial_size / 2)?;
         let free_slots = tospace.start;
         let latest_bytes = tospace.end;
-        Some(Self {max_size, fromspace, tospace, free_slots, latest_bytes, grey: ptr::null_mut()})
+        Some(Self {max_size, fromspace, tospace, free_slots, latest_bytes})
     }
 
     pub unsafe fn alloc_slots(&mut self, class: ORef, len: usize) -> Option<Gc<Object>> {
@@ -229,14 +228,14 @@ impl Heap {
         swap(&mut self.fromspace, &mut self.tospace);
         self.free_slots = self.tospace.start;
         self.latest_bytes = self.tospace.end;
-        self.grey = self.free_slots;
     }
 
     pub unsafe fn mark_root(&mut self, root: ORef) -> ORef { root.mark(self) }
 
     pub unsafe fn gc(&mut self) {
-        while self.grey < self.free_slots {
-            let header: *mut Header = self.grey as _;
+        let mut grey = self.tospace.start;
+        while grey < self.free_slots {
+            let header: *mut Header = grey as _;
             let len = (*header).raw_size();
 
             let mut slot: *mut ORef = header.add(1) as _;
@@ -245,7 +244,7 @@ impl Heap {
                 slot = slot.add(1);
             }
 
-            self.grey = slot as *mut u8;
+            grey = slot as *mut u8;
         }
 
         self.fromspace.wipe();
@@ -280,7 +279,6 @@ mod tests {
         assert_eq!(heap.tospace.size(), 1 << 21);
         assert!(heap.free_slots != ptr::null_mut());
         assert!(heap.latest_bytes != ptr::null_mut());
-        assert_eq!(heap.grey, ptr::null_mut());
     }
 
     #[test]
@@ -361,7 +359,6 @@ mod tests {
         assert!((heap.free_slots as usize) > heap.tospace.start as usize);
         assert!((heap.free_slots as usize) < heap.latest_bytes as usize);
         assert!((heap.latest_bytes as usize) < heap.tospace.end as usize);
-        assert_eq!(heap.grey, heap.free_slots);
     }
 }
 
