@@ -199,6 +199,9 @@ struct SemisHeap {
 impl SemisHeap {
     fn new(initial_size: usize, max_size: usize) -> Option<SemisHeap> {
         debug_assert!(initial_size <= max_size);
+
+        let max_gsize = GSize::from(max_size / size_of::<Granule>());
+        let max_size = max_gsize.in_bytes(); // rounded down, unlike `GSize::in_granules`
         let fromspace = Semispace::new(initial_size / 2)?;
         let tospace = Semispace::new(initial_size / 2)?;
         let free_slots = tospace.start;
@@ -517,6 +520,17 @@ mod tests {
     }
 
     #[test]
+    fn new_sheap() {
+        let heap = SemisHeap::new(1 << 22 /* 4 MiB */, (1 << 22) + 3).unwrap();
+        assert_eq!(heap.max_size, 1 << 22);
+        assert_eq!(heap.fromspace.size(), 1 << 21);
+        assert_eq!(heap.tospace.size(), 1 << 21);
+        assert!(heap.free_slots != ptr::null_mut());
+        assert!(heap.latest_bytes != ptr::null_mut());
+        assert_eq!(heap.grey, ptr::null_mut());
+    }
+
+    #[test]
     fn alloc_slots() {
         let mut heap = Heap::new(1 << 22).unwrap();
         let len = 1 << 7;
@@ -530,8 +544,34 @@ mod tests {
     }
 
     #[test]
+    fn salloc_slots() {
+        let mut heap = SemisHeap::new(1 << 22, 1 << 22).unwrap();
+        let len = 1 << 7;
+        let obj: Gc<Object> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
+        let header = unsafe { obj.header() };
+        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::from(len));
+        assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
+        assert!(!header.is_bytes());
+        assert!(!header.is_marked());
+        assert_eq!(header.class, ORef::NULL);
+    }
+
+    #[test]
     fn alloc_bytes() {
         let mut heap = Heap::new(1 << 22).unwrap();
+        let len = (1 << 10) + 3;
+        let obj: Gc<Object> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
+        let header = unsafe { obj.header() };
+        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::in_granules(len).unwrap());
+        assert_eq!(header.size(), size_of::<Header>() + len);
+        assert!(header.is_bytes());
+        assert!(!header.is_marked());
+        assert_eq!(header.class, ORef::NULL);
+    }
+
+    #[test]
+    fn salloc_bytes() {
+        let mut heap = SemisHeap::new(1 << 22, 1 << 22).unwrap();
         let len = (1 << 10) + 3;
         let obj: Gc<Object> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
         let header = unsafe { obj.header() };
@@ -577,6 +617,48 @@ mod tests {
 
         unsafe { heap.gc(); }
         assert_eq!(heap.free.cursor().peek_next().get().unwrap().size(), heap_size);
+    }
+
+    #[test]
+    fn scollect() {
+        let mut heap = SemisHeap::new(1000, 1000).unwrap();
+
+        let mut size = 0;
+        loop {
+            if size % 3 == 0 {
+                if let Some(obj) = unsafe { heap.alloc_bytes(ORef::NULL, size, align_of::<f64>()) } {
+                    unsafe { 
+                        assert_eq!(obj.header().size(), size_of::<Header>() + size);
+                        assert!(obj.header().is_bytes());
+                        assert!(!obj.header().is_marked());
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                let len = GSize::in_granules(size).unwrap().into();
+                if let Some(obj) = unsafe { heap.alloc_slots(ORef::NULL, len) } {
+                    unsafe { 
+                        assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));
+                        assert!(!obj.header().is_bytes());
+                        assert!(!obj.header().is_marked());
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            size += 1;
+        }
+
+        unsafe {
+            heap.prepare_gc();
+            heap.gc();
+        }
+
+        assert_eq!(heap.free_slots, heap.tospace.start);
+        assert_eq!(heap.latest_bytes, heap.tospace.end);
+        assert_eq!(heap.grey, heap.tospace.start);
     }
 }
 
