@@ -257,10 +257,10 @@ impl SemisHeap {
     fn alloc_clone<T>(&mut self, mut obj: Gc<T>) -> Option<Gc<T>> {
         unsafe {
             let (mut new_obj, size) = if obj.header().is_bytes() {
-                let size = obj.header().size();
+                let size = obj.header().size() - size_of::<Header>();
                 (self.alloc_bytes(obj.class(), size, /* FIXME: */ size_of::<Header>())?, size)
             } else {
-                let len = obj.header().gsize();
+                let len = obj.header().gsize() - GSize::of::<Header>();
                 (self.alloc_slots(obj.class(), len.into())?, len.in_bytes())
             };
 
@@ -283,13 +283,13 @@ impl SemisHeap {
     unsafe fn gc(&mut self) {
         while self.grey < self.free_slots {
             let heading: *mut Heading = self.grey as _;
-            let len = (*heading).raw_size();
+            let len = (*heading).raw_size() - usize::from(GSize::of::<Header>());
 
             let class: *mut ORef = heading.add(1) as _;
             *class = (*class).semis_mark(self);
 
             let mut slot = class.add(1);
-            for _ in 0..len {
+            for i in 0..len {
                 *slot = (*slot).semis_mark(self);
                 slot = slot.add(1);
             }
@@ -622,16 +622,19 @@ mod tests {
     #[test]
     fn scollect() {
         let mut heap = SemisHeap::new(1000, 1000).unwrap();
+        let mut roots = Vec::new();
 
         let mut size = 0;
         loop {
-            if size % 3 == 0 {
+            let obj = if size % 3 == 0 {
                 if let Some(obj) = unsafe { heap.alloc_bytes(ORef::NULL, size, align_of::<f64>()) } {
                     unsafe { 
                         assert_eq!(obj.header().size(), size_of::<Header>() + size);
                         assert!(obj.header().is_bytes());
                         assert!(!obj.header().is_marked());
                     }
+
+                    obj
                 } else {
                     break;
                 }
@@ -643,9 +646,15 @@ mod tests {
                         assert!(!obj.header().is_bytes());
                         assert!(!obj.header().is_marked());
                     }
+
+                    obj
                 } else {
                     break;
                 }
+            };
+
+            if size % 2 == 0 {
+                roots.push(obj);
             }
 
             size += 1;
@@ -653,12 +662,18 @@ mod tests {
 
         unsafe {
             heap.prepare_gc();
+
+            for root in roots.iter_mut() {
+                *root = root.semis_mark(&mut heap);
+            }
+
             heap.gc();
         }
 
-        assert_eq!(heap.free_slots, heap.tospace.start);
-        assert_eq!(heap.latest_bytes, heap.tospace.end);
-        assert_eq!(heap.grey, heap.tospace.start);
+        assert!((heap.free_slots as usize) > heap.tospace.start as usize);
+        assert!((heap.free_slots as usize) < heap.latest_bytes as usize);
+        assert!((heap.latest_bytes as usize) < heap.tospace.end as usize);
+        assert_eq!(heap.grey, heap.free_slots);
     }
 }
 
