@@ -134,6 +134,10 @@ impl Semispace {
     }
 
     fn size(&self) -> usize { self.end as usize - self.start as usize }
+
+    unsafe fn wipe(&mut self) {
+        ptr::write_bytes(self.start, 0, self.size());
+    }
 }
 
 // ---
@@ -221,7 +225,6 @@ impl Heap {
     }
 
     // TODO: Heap expansion logic:
-    // FIXME: zero tospace before swap (or after collection):
     pub unsafe fn prepare_gc(&mut self) {
         swap(&mut self.fromspace, &mut self.tospace);
         self.free_slots = self.tospace.start;
@@ -244,6 +247,8 @@ impl Heap {
 
             self.grey = slot as *mut u8;
         }
+
+        self.fromspace.wipe();
     }
 }
 
