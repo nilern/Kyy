@@ -14,8 +14,13 @@ impl<T> Gc<T> {
         match self.header().forwarded() {
             Some(res) => res,
             None => {
-                let res = heap.alloc_clone(self).unwrap();
+                let mut res = heap.alloc_clone(self).unwrap();
                 self.header_mut().forward(res);
+
+                // Also mark `res` class here to avoid scanning bytes objects even for that:
+                let res_class = res.header_mut().class_mut();
+                *res_class = res_class.mark(heap);
+
                 res
             }
         }
@@ -226,16 +231,12 @@ impl Heap {
 
     pub unsafe fn mark_root(&mut self, root: ORef) -> ORef { root.mark(self) }
 
-    // FIXME: class fields of bytes objects do need to be redirected!:
     pub unsafe fn gc(&mut self) {
         while self.grey < self.free_slots {
-            let heading: *mut Heading = self.grey as _;
-            let len = (*heading).raw_size();
+            let header: *mut Header = self.grey as _;
+            let len = (*header).raw_size();
 
-            let class: *mut ORef = heading.add(1) as _;
-            *class = (*class).mark(self);
-
-            let mut slot = class.add(1);
+            let mut slot: *mut ORef = header.add(1) as _;
             for _ in 0..len {
                 *slot = (*slot).mark(self);
                 slot = slot.add(1);
