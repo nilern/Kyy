@@ -2,10 +2,8 @@ use std::mem::transmute;
 use std::slice;
 
 use super::orefs::{Gc, Root};
-use super::gc::Header;
 use super::mutator::{KyyType, KyyMutator};
 use super::object::Object;
-use super::granule::GSize;
 
 #[repr(C)]
 pub struct Tuple;
@@ -24,9 +22,7 @@ impl Tuple {
 }
 
 impl Root<Tuple> {
-    pub fn len(&self) -> usize {
-        (unsafe { self.as_ref().header().gsize() } - GSize::of::<Header>()).into()
-    }
+    pub fn len(&self) -> usize { unsafe { self.as_ref().header().raw_size() } }
 
     /// Safety: the returned slice must not be live across a safepoint
     pub unsafe fn slots(&self) -> &[Gc<Object>] {

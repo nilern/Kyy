@@ -1,9 +1,8 @@
 use std::fmt::{self, Debug, Formatter};
-use std::mem::{size_of, align_of, transmute};
+use std::mem::{align_of, transmute};
 use std::slice;
 use std::str;
 
-use super::gc::Header;
 use super::orefs::Root;
 use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
@@ -29,9 +28,7 @@ impl Debug for Root<String> {
 }
 
 impl Root<String> {
-    pub fn len(self) -> usize {
-        (unsafe { self.as_ref().header().size() } - size_of::<Header>()).into()
-    }
+    pub fn len(self) -> usize { unsafe { self.as_ref().header().raw_size() } }
 
     /// Safety: the returned slice must not be live across a safepoint
     pub unsafe fn as_str(&self) -> &str {

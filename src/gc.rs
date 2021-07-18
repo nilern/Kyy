@@ -2,7 +2,6 @@ use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::convert::TryFrom;
 use std::mem::{swap, size_of, align_of};
 use std::ptr;
-use std::slice;
 
 use super::orefs::{Gc, ORef};
 use super::object::Object;
@@ -49,36 +48,13 @@ const MARK_BIT: usize = 0b01;
 struct Heading(usize);
 
 impl Heading {
-    fn bytes(size: usize) -> Heading {
-        let size = size + size_of::<Header>();
-        Heading(size << TAG_BITCOUNT | BYTES_BIT)
-    }
+    fn bytes(size: usize) -> Heading { Heading(size << TAG_BITCOUNT | BYTES_BIT) }
 
-    fn slots(gsize: GSize) -> Heading {
-        let gsize = gsize + GSize::of::<Header>();
-        Heading(usize::from(gsize) << TAG_BITCOUNT)
-    }
+    fn slots(gsize: GSize) -> Heading { Heading(usize::from(gsize) << TAG_BITCOUNT) }
 
     fn is_bytes(&self) -> bool { (self.0 & BYTES_BIT) == BYTES_BIT }
 
     fn raw_size(&self) -> usize { self.0 >> TAG_BITCOUNT }
-
-    // OPTIMIZE: Don't include Header size (requires alignment hole recognizability).
-    fn gsize(&self) -> GSize {
-        if self.is_bytes() {
-            GSize::in_granules(self.0 >> TAG_BITCOUNT).unwrap()
-        } else {
-            GSize::from(self.0 >> TAG_BITCOUNT)
-        }
-    }
-
-    fn size(&self) -> usize {
-        if self.is_bytes() {
-            self.0 >> TAG_BITCOUNT
-        } else {
-            GSize::from(self.0 >> TAG_BITCOUNT).in_bytes()
-        }
-    }
 
     fn is_marked(&self) -> bool { (self.0 & MARK_BIT) == MARK_BIT }
 
@@ -94,9 +70,7 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn gsize(&self) -> GSize { self.heading.gsize() }
-
-    pub fn size(&self) -> usize { self.heading.size() }
+    pub fn raw_size(&self) -> usize { self.heading.raw_size() }
 
     fn is_bytes(&self) -> bool { self.heading.is_bytes() }
 
@@ -229,10 +203,10 @@ impl Heap {
     fn alloc_clone<T>(&mut self, mut obj: Gc<T>) -> Option<Gc<T>> {
         unsafe {
             let (mut new_obj, size) = if obj.header().is_bytes() {
-                let size = obj.header().size() - size_of::<Header>();
+                let size = obj.header().heading.raw_size();
                 (self.alloc_bytes(obj.class(), size, /* FIXME: */ size_of::<Header>())?, size)
             } else {
-                let len = obj.header().gsize() - GSize::of::<Header>();
+                let len = GSize::from(obj.header().heading.raw_size());
                 (self.alloc_slots(obj.class(), len.into())?, len.in_bytes())
             };
 
@@ -252,10 +226,11 @@ impl Heap {
 
     pub unsafe fn mark_root(&mut self, root: ORef) -> ORef { root.mark(self) }
 
+    // FIXME: class fields of bytes objects do need to be redirected!:
     pub unsafe fn gc(&mut self) {
         while self.grey < self.free_slots {
             let heading: *mut Heading = self.grey as _;
-            let len = (*heading).raw_size() - usize::from(GSize::of::<Header>());
+            let len = (*heading).raw_size();
 
             let class: *mut ORef = heading.add(1) as _;
             *class = (*class).mark(self);
@@ -292,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn new_sheap() {
+    fn new_heap() {
         let heap = Heap::new(1 << 22 /* 4 MiB */, (1 << 22) + 3).unwrap();
         assert_eq!(heap.max_size, 1 << 22);
         assert_eq!(heap.fromspace.size(), 1 << 21);
@@ -303,33 +278,31 @@ mod tests {
     }
 
     #[test]
-    fn salloc_slots() {
+    fn alloc_slots() {
         let mut heap = Heap::new(1 << 22, 1 << 22).unwrap();
         let len = 1 << 7;
         let obj: Gc<Object> = unsafe { heap.alloc_slots(ORef::NULL, len).unwrap() };
         let header = unsafe { obj.header() };
-        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::from(len));
-        assert_eq!(header.size(), size_of::<Header>() + size_of::<Granule>() * len);
+        assert_eq!(header.raw_size(), len);
         assert!(!header.is_bytes());
         assert!(!header.is_marked());
         assert_eq!(header.class, ORef::NULL);
     }
 
     #[test]
-    fn salloc_bytes() {
+    fn alloc_bytes() {
         let mut heap = Heap::new(1 << 22, 1 << 22).unwrap();
         let len = (1 << 10) + 3;
         let obj: Gc<Object> = unsafe { heap.alloc_bytes(ORef::NULL, len, align_of::<u8>()).unwrap() };
         let header = unsafe { obj.header() };
-        assert_eq!(header.gsize(), GSize::of::<Header>() + GSize::in_granules(len).unwrap());
-        assert_eq!(header.size(), size_of::<Header>() + len);
+        assert_eq!(header.raw_size(), len);
         assert!(header.is_bytes());
         assert!(!header.is_marked());
         assert_eq!(header.class, ORef::NULL);
     }
 
     #[test]
-    fn scollect() {
+    fn collect() {
         let mut heap = Heap::new(1000, 1000).unwrap();
         let mut roots = Vec::new();
 
@@ -338,7 +311,7 @@ mod tests {
             let obj = if size % 3 == 0 {
                 if let Some(obj) = unsafe { heap.alloc_bytes(ORef::NULL, size, align_of::<f64>()) } {
                     unsafe { 
-                        assert_eq!(obj.header().size(), size_of::<Header>() + size);
+                        assert_eq!(obj.header().raw_size(), size);
                         assert!(obj.header().is_bytes());
                         assert!(!obj.header().is_marked());
                     }
@@ -351,7 +324,7 @@ mod tests {
                 let len = GSize::in_granules(size).unwrap().into();
                 if let Some(obj) = unsafe { heap.alloc_slots(ORef::NULL, len) } {
                     unsafe { 
-                        assert_eq!(obj.header().gsize(), GSize::of::<Header>() + GSize::from(len));
+                        assert_eq!(obj.header().raw_size(), len);
                         assert!(!obj.header().is_bytes());
                         assert!(!obj.header().is_marked());
                     }
