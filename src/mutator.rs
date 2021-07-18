@@ -145,7 +145,8 @@ struct Singletons {
 
 impl KyyMutator {
     pub fn new(max_heap_size: usize) -> Option<KyyMutator> {
-        let mut heap = gc::Heap::new(max_heap_size)?;
+        // TODO: Smaller initial size when becomes self-expanding:
+        let mut heap = gc::Heap::new(max_heap_size, max_heap_size)?;
         let mut roots = Vec::new();
         unsafe {
             let mut type_typ: Gc<Type> = heap.alloc_slots(ORef::NULL, size_of::<Type>())?
@@ -301,6 +302,8 @@ impl KyyMutator {
     pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
 
     unsafe fn gc(&mut self) {
+        self.heap.prepare_gc();
+
         self.roots.retain(|root| root.is_active());
 
         for root in self.roots.iter() {

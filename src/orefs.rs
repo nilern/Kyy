@@ -63,14 +63,6 @@ impl ORef {
 
     pub unsafe fn unchecked_cast<T>(self) -> Gc<T> { Gc::from_raw(self.0 as *mut T) }
 
-    pub unsafe fn mark(self, heap: &mut Heap) -> ORef {
-        if let Ok(obj) = Gc::try_from(self) {
-            obj.mark(heap).into()
-        } else {
-            self
-        }
-    }
-
     pub fn is(self, other: ORef) -> bool { ptr::eq(self.0, other.0) }
 }
 

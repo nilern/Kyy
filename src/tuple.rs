@@ -39,7 +39,7 @@ mod tests {
     use super::*;
 
     use super::super::orefs::ORef;
-    use super::super::mutator::{KyyMutator, KyySizedBytesType};
+    use super::super::mutator::KyyMutator;
     use super::super::int::Int;
 
     #[test]
