@@ -1,7 +1,8 @@
 use std::mem::transmute;
 use std::slice;
 
-use super::orefs::{Gc, Handle};
+use super::handle::Handle;
+use super::orefs::Gc;
 use super::mutator::{KyyType, KyyMutator};
 use super::object::Object;
 

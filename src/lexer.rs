@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::ops::Range;
 
-use super::orefs::Handle;
+use super::handle::Handle;
 use super::string;
 
 #[derive(Debug, Clone)]

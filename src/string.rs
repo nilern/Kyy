@@ -3,7 +3,7 @@ use std::mem::{align_of, transmute};
 use std::slice;
 use std::str;
 
-use super::orefs::Handle;
+use super::handle::Handle;
 use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 

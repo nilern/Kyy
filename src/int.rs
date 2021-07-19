@@ -1,4 +1,5 @@
-use super::orefs::{Gc, Handle};
+use super::handle::Handle;
+use super::orefs::Gc;
 use super::mutator::{KyySizedBytesType, KyyMutator};
 
 #[repr(C)]

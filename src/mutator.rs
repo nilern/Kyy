@@ -2,7 +2,8 @@ use std::mem::{size_of, align_of, transmute};
 use std::slice;
 
 use super::granule::GSize;
-use super::orefs::{ORef, Gc, Handle};
+use super::handle::Handle;
+use super::orefs::{ORef, Gc};
 use super::gc::{self, Header};
 use super::object::Object;
 use super::int::Int;

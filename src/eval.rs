@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::orefs::Handle;
+use super::handle::Handle;
 use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 use super::int::Int;

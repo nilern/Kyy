@@ -1,9 +1,10 @@
 use std::convert::TryInto;
 use std::ops::Range;
 
+use super::handle::Handle;
 use super::lexer::Spanning;
 use super::object::Object;
-use super::orefs::{Gc, Handle};
+use super::orefs::Gc;
 use super::mutator::{KyySizedSlotsType, KyyMutator};
 use super::string::String;
 use super::tuple::Tuple;
