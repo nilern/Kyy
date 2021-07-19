@@ -79,10 +79,6 @@ impl Header {
 
     fn is_bytes(&self) -> bool { self.heading.is_bytes() }
 
-    pub fn mark(&mut self) { self.heading.mark(); }
-
-    pub fn is_marked(&self) -> bool { self.heading.is_marked() }
-
     pub fn class(&self) -> ObjectRef { self.class }
 
     pub fn class_mut(&mut self) -> &mut ObjectRef { &mut self.class }
@@ -289,7 +285,7 @@ mod tests {
         let header = unsafe { obj.header() };
         assert_eq!(header.raw_size(), len);
         assert!(!header.is_bytes());
-        assert!(!header.is_marked());
+        assert!(!unsafe { header.forwarded::<Object>().is_some() });
         assert_eq!(header.class, ObjectRef::NULL);
     }
 
@@ -301,7 +297,7 @@ mod tests {
         let header = unsafe { obj.header() };
         assert_eq!(header.raw_size(), len);
         assert!(header.is_bytes());
-        assert!(!header.is_marked());
+        assert!(!unsafe { header.forwarded::<Object>().is_some() });
         assert_eq!(header.class, ObjectRef::NULL);
     }
 
@@ -317,7 +313,7 @@ mod tests {
                     unsafe { 
                         assert_eq!(obj.header().raw_size(), size);
                         assert!(obj.header().is_bytes());
-                        assert!(!obj.header().is_marked());
+                        assert!(!obj.header().forwarded::<Object>().is_some());
                     }
 
                     obj
@@ -330,7 +326,7 @@ mod tests {
                     unsafe { 
                         assert_eq!(obj.header().raw_size(), len);
                         assert!(!obj.header().is_bytes());
-                        assert!(!obj.header().is_marked());
+                        assert!(!obj.header().forwarded::<Object>().is_some());
                     }
 
                     obj

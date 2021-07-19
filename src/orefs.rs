@@ -44,8 +44,6 @@ impl<T> ObjectPtr<T> {
     }
 
     pub fn class(self) -> ObjectRef { unsafe { self.header().class() } }
-
-    pub fn is_marked(self) -> bool { unsafe { self.header().is_marked() } }
 }
 
 // ---
