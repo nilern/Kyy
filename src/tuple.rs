@@ -1,7 +1,7 @@
 use std::mem::transmute;
 use std::slice;
 
-use super::orefs::{Gc, Root};
+use super::orefs::{Gc, Handle};
 use super::mutator::{KyyType, KyyMutator};
 use super::object::Object;
 
@@ -9,10 +9,10 @@ use super::object::Object;
 pub struct Tuple;
 
 impl Tuple {
-    pub fn new(km: &mut KyyMutator, vs: &[Gc<Object>]) -> Root<Tuple> {
+    pub fn new(km: &mut KyyMutator, vs: &[Gc<Object>]) -> Handle<Tuple> {
         unsafe {
-            let root: Root<Object> = km.alloc_slots(Self::reify(km), vs.len());
-            let root: Root<Self> = root.unchecked_cast();
+            let root: Handle<Object> = km.alloc_slots(Self::reify(km), vs.len());
+            let root: Handle<Self> = root.unchecked_cast();
             let contents: &mut [Gc<Object>] = slice::from_raw_parts_mut(
                 root.as_mut_ptr() as *mut Gc<Object>, vs.len());
             contents.copy_from_slice(vs);
@@ -21,7 +21,7 @@ impl Tuple {
     }
 }
 
-impl Root<Tuple> {
+impl Handle<Tuple> {
     pub fn len(&self) -> usize { unsafe { self.as_ref().header().raw_size() } }
 
     /// Safety: the returned slice must not be live across a safepoint

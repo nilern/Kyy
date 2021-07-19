@@ -80,20 +80,20 @@ impl<T> From<Gc<T>> for ORef {
 
 // ---
 
-pub struct Root<T>(Rc<Cell<Gc<T>>>);
+pub struct Handle<T>(Rc<Cell<Gc<T>>>);
 
-impl<T> Clone for Root<T> {
-    fn clone(&self) -> Root<T> { Root(self.0.clone()) }
+impl<T> Clone for Handle<T> {
+    fn clone(&self) -> Handle<T> { Handle(self.0.clone()) }
 }
 
-impl<T> Root<T> {
-    pub unsafe fn untracked(oref: Gc<T>) -> Root<T> { Root(Rc::new(Cell::new(oref))) }
+impl<T> Handle<T> {
+    pub unsafe fn untracked(oref: Gc<T>) -> Handle<T> { Handle(Rc::new(Cell::new(oref))) }
 
     pub fn is_active(&self) -> bool { Rc::strong_count(&self.0) > 1 }
 
-    pub fn as_obj(self) -> Root<Object> { unsafe { self.unchecked_cast() } }
+    pub fn as_obj(self) -> Handle<Object> { unsafe { self.unchecked_cast() } }
 
-    pub unsafe fn unchecked_cast<U>(self) -> Root<U> { transmute(self) }
+    pub unsafe fn unchecked_cast<U>(self) -> Handle<U> { transmute(self) }
 
     /// Safety: The returned reference must not be live across a safepoint.
     pub unsafe fn as_ref<'a>(&'a self) -> &'a T { transmute(self.0.get().as_ref()) }

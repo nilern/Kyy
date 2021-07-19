@@ -2,7 +2,7 @@ use std::mem::{size_of, align_of, transmute};
 use std::slice;
 
 use super::granule::GSize;
-use super::orefs::{ORef, Gc, Root};
+use super::orefs::{ORef, Gc, Handle};
 use super::gc::{self, Header};
 use super::object::Object;
 use super::int::Int;
@@ -24,18 +24,18 @@ pub struct Type {
 // ---
 
 pub unsafe trait KyyType: Sized {
-    fn reify(km: &KyyMutator) -> Root<Type>;
+    fn reify(km: &KyyMutator) -> Handle<Type>;
 
     /// Safety: The returned reference must not be live across a safepoint.
     unsafe fn header<'a>(&'a self) -> &'a Header {
         transmute(Gc::from_raw(transmute::<&Self, *mut Self>(self)).header())
     }
 
-    fn isa(km: &KyyMutator, root: Root<Object>) -> bool {
+    fn isa(km: &KyyMutator, root: Handle<Object>) -> bool {
         unsafe { root.oref().as_obj().class().is(Self::reify(km).oref().into()) }
     }
 
-    fn downcast(km: &KyyMutator, root: Root<Object>) -> Option<Root<Self>> {
+    fn downcast(km: &KyyMutator, root: Handle<Object>) -> Option<Handle<Self>> {
         if Self::isa(km, root.clone()) {
             Some(unsafe { root.unchecked_cast() })
         } else {
@@ -45,10 +45,10 @@ pub unsafe trait KyyType: Sized {
 }
 
 pub unsafe trait KyySizedSlotsType: KyyType {
-    fn alloc(km: &mut KyyMutator, contents: Self) -> Root<Self> {
+    fn alloc(km: &mut KyyMutator, contents: Self) -> Handle<Self> {
         unsafe {
-            let root: Root<Object> = km.alloc_slots(Self::reify(km), GSize::of::<Self>().into());
-            let root: Root<Self> = root.unchecked_cast();
+            let root: Handle<Object> = km.alloc_slots(Self::reify(km), GSize::of::<Self>().into());
+            let root: Handle<Self> = root.unchecked_cast();
             root.as_mut_ptr().write(contents);
             root
         }
@@ -56,10 +56,10 @@ pub unsafe trait KyySizedSlotsType: KyyType {
 }
 
 pub unsafe trait KyySizedBytesType: KyyType {
-    fn alloc(km: &mut KyyMutator, contents: Self) -> Root<Self> {
+    fn alloc(km: &mut KyyMutator, contents: Self) -> Handle<Self> {
         unsafe {
-            let root: Root<Object> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
-            let root: Root<Self> = root.unchecked_cast();
+            let root: Handle<Object> = km.alloc_bytes(Self::reify(km), size_of::<Self>(), align_of::<Self>());
+            let root: Handle<Self> = root.unchecked_cast();
             root.as_mut_ptr().write(contents);
             root
         }
@@ -98,7 +98,7 @@ struct BuiltinTypes {
 macro_rules! impl_kyy_type {
     ($T: ty, $field: ident) => {
         unsafe impl KyyType for $T {
-            fn reify(km: &KyyMutator) -> Root<Type> { unsafe { Root::untracked(km.types.$field) } }
+            fn reify(km: &KyyMutator) -> Handle<Type> { unsafe { Handle::untracked(km.types.$field) } }
         }
     }
 }
@@ -133,14 +133,14 @@ impl_kyy_type!(ast::Assign, assign_typ);
 
 pub struct KyyMutator {
     heap: gc::Heap,
-    roots: Vec<Root<Object>>,
+    roots: Vec<Handle<Object>>,
     types: BuiltinTypes,
     singletons: Singletons
 }
 
 struct Singletons {
-    tru: Root<Bool>,
-    fals: Root<Bool>
+    tru: Handle<Bool>,
+    fals: Handle<Bool>
 }
 
 impl KyyMutator {
@@ -256,12 +256,12 @@ impl KyyMutator {
             let mut tru: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
             tru.as_mut_ptr().write(Bool(true));
-            let tru = Root::untracked(tru);
+            let tru = Handle::untracked(tru);
             roots.push(tru.clone().unchecked_cast());
             let mut fals: Gc<Bool> = heap.alloc_bytes(bool_typ.into(), size_of::<Bool>(), align_of::<Bool>())?
                 .unchecked_cast();
             fals.as_mut_ptr().write(Bool(false));
-            let fals = Root::untracked(fals);
+            let fals = Handle::untracked(fals);
             roots.push(fals.clone().unchecked_cast());
 
             Some(KyyMutator {
@@ -276,7 +276,7 @@ impl KyyMutator {
         }
     }
 
-    pub unsafe fn alloc_slots(&mut self, class: Root<Type>, len: usize) -> Root<Object> {
+    pub unsafe fn alloc_slots(&mut self, class: Handle<Type>, len: usize) -> Handle<Object> {
         let oref = self.heap.alloc_slots(class.oref().into(), len).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_slots(class.oref().into(), len).expect("Kyy out of memory")
@@ -284,7 +284,7 @@ impl KyyMutator {
         self.root(oref)
     }
 
-    pub unsafe fn alloc_bytes(&mut self, class: Root<Type>, size: usize, align: usize) -> Root<Object> {
+    pub unsafe fn alloc_bytes(&mut self, class: Handle<Type>, size: usize, align: usize) -> Handle<Object> {
         let oref = self.heap.alloc_bytes(class.oref().into(), size, align).unwrap_or_else(|| {
             self.gc();
             self.heap.alloc_bytes(class.oref().into(), size, align).expect("Kyy out of memory")
@@ -292,14 +292,14 @@ impl KyyMutator {
         self.root(oref)
     }
 
-    pub fn root<T>(&mut self, oref: Gc<T>) -> Root<T> {
-        let root = unsafe { Root::untracked(oref) }; // Safety: untracked -> tracked on next line
+    pub fn root<T>(&mut self, oref: Gc<T>) -> Handle<T> {
+        let root = unsafe { Handle::untracked(oref) }; // Safety: untracked -> tracked on next line
         self.roots.push(root.clone().as_obj());
         root
     }
 
-    pub fn the_true(&self) -> Root<Bool> { self.singletons.tru.clone() }
-    pub fn the_false(&self) -> Root<Bool> { self.singletons.fals.clone() }
+    pub fn the_true(&self) -> Handle<Bool> { self.singletons.tru.clone() }
+    pub fn the_false(&self) -> Handle<Bool> { self.singletons.fals.clone() }
 
     unsafe fn gc(&mut self) {
         self.heap.prepare_gc();

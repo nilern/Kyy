@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use super::lexer::Spanning;
 use super::object::Object;
-use super::orefs::{Gc, Root};
+use super::orefs::{Gc, Handle};
 use super::mutator::{KyySizedSlotsType, KyyMutator};
 use super::string::String;
 use super::tuple::Tuple;
@@ -19,7 +19,7 @@ pub struct Expr {
 }
 
 impl Expr {
-    unsafe fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Expr {
+    unsafe fn new(filename: Handle<String>, start: Handle<Int>, end: Handle<Int>) -> Expr {
         Expr {
             filename: filename.oref(),
             start: start.oref(),
@@ -28,12 +28,12 @@ impl Expr {
     }
 }
 
-impl Root<Expr> {
-    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().filename }) }
+impl Handle<Expr> {
+    pub fn filename(self, km: &mut KyyMutator) -> Handle<String> { km.root(unsafe { self.as_ref().filename }) }
 
-    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().start }) }
+    pub fn start(self, km: &mut KyyMutator) -> Handle<Int> { km.root(unsafe { self.as_ref().start }) }
 
-    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().end }) }
+    pub fn end(self, km: &mut KyyMutator) -> Handle<Int> { km.root(unsafe { self.as_ref().end }) }
 
     pub fn here<T>(self, km: &mut KyyMutator, value: T) -> Spanning<T> {
         Spanning {
@@ -57,9 +57,9 @@ macro_rules! binary_node {
         unsafe impl KyySizedSlotsType for $name {}
 
         impl $name {
-            pub fn new(km: &mut KyyMutator, filename: Root<String>,
-                 left: Root<Expr>, right: Root<Expr>
-            ) -> Root<$name> {
+            pub fn new(km: &mut KyyMutator, filename: Handle<String>,
+                 left: Handle<Expr>, right: Handle<Expr>
+            ) -> Handle<$name> {
                 let start = left.clone().start(km);
                 let end = right.clone().end(km);
                 unsafe {
@@ -69,14 +69,14 @@ macro_rules! binary_node {
             }
         }
 
-        impl From<Root<$name>> for Root<Expr> {
-            fn from(expr: Root<$name>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
+        impl From<Handle<$name>> for Handle<Expr> {
+            fn from(expr: Handle<$name>) -> Handle<Expr> { unsafe { expr.unchecked_cast() } }
         }
 
-        impl Root<$name> {
-            pub fn left(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().left }) }
+        impl Handle<$name> {
+            pub fn left(self, km: &mut KyyMutator) -> Handle<Expr> { km.root(unsafe { self.as_ref().left }) }
 
-            pub fn right(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().right }) }
+            pub fn right(self, km: &mut KyyMutator) -> Handle<Expr> { km.root(unsafe { self.as_ref().right }) }
         }
     }
 }
@@ -102,7 +102,7 @@ pub struct Var {
 unsafe impl KyySizedSlotsType for Var {}
 
 impl Var {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, name: &str) -> Root<Var> {
+    pub fn new(km: &mut KyyMutator, filename: Handle<String>, span: Range<usize>, name: &str) -> Handle<Var> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
         unsafe {
@@ -113,12 +113,12 @@ impl Var {
     }
 }
 
-impl From<Root<Var>> for Root<Expr> {
-    fn from(expr: Root<Var>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
+impl From<Handle<Var>> for Handle<Expr> {
+    fn from(expr: Handle<Var>) -> Handle<Expr> { unsafe { expr.unchecked_cast() } }
 }
 
-impl Root<Var> {
-    pub fn name(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().name }) }
+impl Handle<Var> {
+    pub fn name(self, km: &mut KyyMutator) -> Handle<String> { km.root(unsafe { self.as_ref().name }) }
 }
 
 #[repr(C)]
@@ -130,8 +130,8 @@ pub struct Const {
 unsafe impl KyySizedSlotsType for Const {}
 
 impl Const {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>, value: Root<Object>
-    ) -> Root<Const> {
+    pub fn new(km: &mut KyyMutator, filename: Handle<String>, span: Range<usize>, value: Handle<Object>
+    ) -> Handle<Const> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
         unsafe {
@@ -141,12 +141,12 @@ impl Const {
     }
 }
 
-impl From<Root<Const>> for Root<Expr> {
-    fn from(expr: Root<Const>) -> Root<Expr> { unsafe { expr.unchecked_cast() } }
+impl From<Handle<Const>> for Handle<Expr> {
+    fn from(expr: Handle<Const>) -> Handle<Expr> { unsafe { expr.unchecked_cast() } }
 }
 
-impl Root<Const> {
-    pub fn value(self, km: &mut KyyMutator) -> Root<Object> { km.root(unsafe { self.as_ref().value }) }
+impl Handle<Const> {
+    pub fn value(self, km: &mut KyyMutator) -> Handle<Object> { km.root(unsafe { self.as_ref().value }) }
 }
 
 #[repr(C)]
@@ -157,7 +157,7 @@ pub struct Stmt {
 }
 
 impl Stmt {
-    unsafe fn new(filename: Root<String>, start: Root<Int>, end: Root<Int>) -> Stmt {
+    unsafe fn new(filename: Handle<String>, start: Handle<Int>, end: Handle<Int>) -> Stmt {
         Stmt {
             filename: filename.oref(),
             start: start.oref(),
@@ -166,12 +166,12 @@ impl Stmt {
     }
 }
 
-impl Root<Stmt> {
-    pub fn filename(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().filename }) }
+impl Handle<Stmt> {
+    pub fn filename(self, km: &mut KyyMutator) -> Handle<String> { km.root(unsafe { self.as_ref().filename }) }
 
-    pub fn start(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().start }) }
+    pub fn start(self, km: &mut KyyMutator) -> Handle<Int> { km.root(unsafe { self.as_ref().start }) }
 
-    pub fn end(self, km: &mut KyyMutator) -> Root<Int> { km.root(unsafe { self.as_ref().end }) }
+    pub fn end(self, km: &mut KyyMutator) -> Handle<Int> { km.root(unsafe { self.as_ref().end }) }
 }
 
 #[repr(C)]
@@ -183,7 +183,7 @@ pub struct ExprStmt {
 unsafe impl KyySizedSlotsType for ExprStmt {}
 
 impl ExprStmt {
-    pub fn new(km: &mut KyyMutator, expr: Root<Expr>) -> Root<ExprStmt> {
+    pub fn new(km: &mut KyyMutator, expr: Handle<Expr>) -> Handle<ExprStmt> {
         let filename = expr.clone().filename(km);
         let start = expr.clone().start(km);
         let end = expr.clone().end(km);
@@ -196,12 +196,12 @@ impl ExprStmt {
     }
 }
 
-impl From<Root<ExprStmt>> for Root<Stmt> {
-    fn from(expr: Root<ExprStmt>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
+impl From<Handle<ExprStmt>> for Handle<Stmt> {
+    fn from(expr: Handle<ExprStmt>) -> Handle<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
-impl Root<ExprStmt> {
-    pub fn expr(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().expr }) }
+impl Handle<ExprStmt> {
+    pub fn expr(self, km: &mut KyyMutator) -> Handle<Expr> { km.root(unsafe { self.as_ref().expr }) }
 }
 
 #[repr(C)]
@@ -215,9 +215,9 @@ pub struct If {
 unsafe impl KyySizedSlotsType for If {}
 
 impl If {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, start: usize, end: Root<Int>,
-        condition: Root<Expr>, conseq: Root<Tuple>, alt: Root<Tuple>
-    ) -> Root<If> {
+    pub fn new(km: &mut KyyMutator, filename: Handle<String>, start: usize, end: Handle<Int>,
+        condition: Handle<Expr>, conseq: Handle<Tuple>, alt: Handle<Tuple>
+    ) -> Handle<If> {
         let start = Int::new(km, start.try_into().unwrap());
         unsafe {
             Self::alloc(km, If {
@@ -230,16 +230,16 @@ impl If {
     }
 }
 
-impl From<Root<If>> for Root<Stmt> {
-    fn from(expr: Root<If>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
+impl From<Handle<If>> for Handle<Stmt> {
+    fn from(expr: Handle<If>) -> Handle<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
-impl Root<If> {
-    pub fn condition(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().condition }) }
+impl Handle<If> {
+    pub fn condition(self, km: &mut KyyMutator) -> Handle<Expr> { km.root(unsafe { self.as_ref().condition }) }
 
-    pub fn conseq(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(unsafe { self.as_ref().conseq }) }
+    pub fn conseq(self, km: &mut KyyMutator) -> Handle<Tuple> { km.root(unsafe { self.as_ref().conseq }) }
 
-    pub fn alt(self, km: &mut KyyMutator) -> Root<Tuple> { km.root(unsafe { self.as_ref().alt }) }
+    pub fn alt(self, km: &mut KyyMutator) -> Handle<Tuple> { km.root(unsafe { self.as_ref().alt }) }
 }
 
 #[repr(C)]
@@ -252,9 +252,9 @@ pub struct Assign {
 unsafe impl KyySizedSlotsType for Assign {}
 
 impl Assign {
-    pub fn new(km: &mut KyyMutator, filename: Root<String>, span: Range<usize>,
-        lvalue: Root<String>, rvalue: Root<Expr>
-    ) -> Root<Assign> {
+    pub fn new(km: &mut KyyMutator, filename: Handle<String>, span: Range<usize>,
+        lvalue: Handle<String>, rvalue: Handle<Expr>
+    ) -> Handle<Assign> {
         let start = Int::new(km, span.start.try_into().unwrap());
         let end = Int::new(km, span.end.try_into().unwrap());
         unsafe {
@@ -267,13 +267,13 @@ impl Assign {
     }
 }
 
-impl From<Root<Assign>> for Root<Stmt> {
-    fn from(expr: Root<Assign>) -> Root<Stmt> { unsafe { expr.unchecked_cast() } }
+impl From<Handle<Assign>> for Handle<Stmt> {
+    fn from(expr: Handle<Assign>) -> Handle<Stmt> { unsafe { expr.unchecked_cast() } }
 }
 
-impl Root<Assign> {
-    pub fn var(self, km: &mut KyyMutator) -> Root<String> { km.root(unsafe { self.as_ref().left }) }
+impl Handle<Assign> {
+    pub fn var(self, km: &mut KyyMutator) -> Handle<String> { km.root(unsafe { self.as_ref().left }) }
 
-    pub fn rvalue(self, km: &mut KyyMutator) -> Root<Expr> { km.root(unsafe { self.as_ref().right }) }
+    pub fn rvalue(self, km: &mut KyyMutator) -> Handle<Expr> { km.root(unsafe { self.as_ref().right }) }
 }
 

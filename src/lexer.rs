@@ -1,20 +1,20 @@
 use std::convert::{TryFrom, TryInto};
 use std::ops::Range;
 
-use super::orefs::Root;
+use super::orefs::Handle;
 use super::string;
 
 #[derive(Debug, Clone)]
 pub struct Located<T> {
     pub value: T,
-    pub filename: Root<string::String>,
+    pub filename: Handle<string::String>,
     pub offset: usize
 }
 
 #[derive(Debug, Clone)]
 pub struct Spanning<T> {
     pub value: T,
-    pub filename: Root<string::String>,
+    pub filename: Handle<string::String>,
     pub span: Range<usize>
 }
 
@@ -100,7 +100,7 @@ pub type LexResult<'a> = Result<Spanning<Token<'a>>, Located<Error>>;
 struct LookaheadlessLexer<'a> {
     chars: &'a str,
     index: usize,
-    filename: Root<string::String>
+    filename: Handle<string::String>
 }
 
 impl<'a> LookaheadlessLexer<'a> {
@@ -368,7 +368,7 @@ pub struct KyyLexer<'a> {
 }
 
 impl<'a> KyyLexer<'a> {
-    pub fn new(chars: &'a str, filename: Root<string::String>) -> Self {
+    pub fn new(chars: &'a str, filename: Handle<string::String>) -> Self {
         KyyLexer {
             tokens: IndentingLexer {
                 tokens: LookaheadlessLexer {chars, index: 0, filename},

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::orefs::Root;
+use super::orefs::Handle;
 use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 use super::int::Int;
@@ -11,18 +11,18 @@ use super::ast::{self, Expr, Stmt};
 use super::lexer::Spanning;
 
 pub enum Error {
-    TypeError(Vec<Root<Object>>),
-    Unbound(Root<string::String>)
+    TypeError(Vec<Handle<Object>>),
+    Unbound(Handle<string::String>)
 }
 
 type EvalResult<T> = Result<T, Spanning<Error>>;
 
-type Env = HashMap<String, Root<Object>>;
+type Env = HashMap<String, Handle<Object>>;
 
 pub fn new_global_env() -> Env { HashMap::new() }
 
-fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
-    -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> isize
+fn arithmetic<F>(km: &mut KyyMutator, l: Handle<Object>, r: Handle<Object>, f: F)
+    -> Result<Handle<Object>, Error> where F: Fn(isize, isize) -> isize
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
@@ -33,8 +33,8 @@ fn arithmetic<F>(km: &mut KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     Err(Error::TypeError(vec![l, r]))
 }
 
-fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
-    -> Result<Root<Object>, Error> where F: Fn(isize, isize) -> bool
+fn comparison<F>(km: &KyyMutator, l: Handle<Object>, r: Handle<Object>, f: F)
+    -> Result<Handle<Object>, Error> where F: Fn(isize, isize) -> bool
 {
     if let Some(l) = Int::downcast(km, l.clone()) {
         if let Some(r) = Int::downcast(km, r.clone()) {
@@ -45,7 +45,7 @@ fn comparison<F>(km: &KyyMutator, l: Root<Object>, r: Root<Object>, f: F)
     Err(Error::TypeError(vec![l, r]))
 }
 
-fn as_bool(km: &KyyMutator, v: Root<Object>) -> bool {
+fn as_bool(km: &KyyMutator, v: Handle<Object>) -> bool {
     if let Some(b) = Bool::downcast(km, v.clone()) {
         b.into()
     } else if let Some(n) = Int::downcast(km, v.clone()) {
@@ -59,11 +59,11 @@ fn as_bool(km: &KyyMutator, v: Root<Object>) -> bool {
     }
 }
 
-pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root<Object>> {
+pub fn eval(km: &mut KyyMutator, env: &Env, expr: Handle<Expr>) -> EvalResult<Handle<Object>> {
     use ast::*;
 
     let res = {
-        let expr: Root<Object> = expr.clone().as_obj(); // HACK
+        let expr: Handle<Object> = expr.clone().as_obj(); // HACK
 
         if let Some(expr) = Add::downcast(km, expr.clone()) {
             let l = expr.clone().left(km);
@@ -145,7 +145,7 @@ pub fn eval(km: &mut KyyMutator, env: &Env, expr: Root<Expr>) -> EvalResult<Root
     res.map_err(|err| expr.here(km, err))
 }
 
-fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalResult<Option<Root<Object>>> {
+fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Handle<Tuple>) -> EvalResult<Option<Handle<Object>>> {
     let mut res = None;
     for i in 0..stmts.len() {
         let stmt = unsafe { km.root(stmts.slots()[i]).unchecked_cast() };
@@ -154,8 +154,8 @@ fn exec_block(km: &mut KyyMutator, env: &mut Env, stmts: Root<Tuple>) -> EvalRes
     Ok(res)
 }
 
-pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Root<Stmt>) -> EvalResult<Option<Root<Object>>> {
-    let stmt: Root<Object> = stmt.as_obj(); // HACK
+pub fn exec(km: &mut KyyMutator, env: &mut Env, stmt: Handle<Stmt>) -> EvalResult<Option<Handle<Object>>> {
+    let stmt: Handle<Object> = stmt.as_obj(); // HACK
 
     if let Some(stmt) = ast::If::downcast(km, stmt.clone()) {
         let cond = stmt.clone().condition(km);

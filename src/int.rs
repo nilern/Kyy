@@ -1,4 +1,4 @@
-use super::orefs::{Gc, Root};
+use super::orefs::{Gc, Handle};
 use super::mutator::{KyySizedBytesType, KyyMutator};
 
 #[repr(C)]
@@ -7,15 +7,15 @@ pub struct Int(pub isize);
 unsafe impl KyySizedBytesType for Int {}
 
 impl Int {
-    pub fn new(km: &mut KyyMutator, n: isize) -> Root<Int> { Self::alloc(km, Int(n)) }
+    pub fn new(km: &mut KyyMutator, n: isize) -> Handle<Int> { Self::alloc(km, Int(n)) }
 }
 
 impl From<Gc<Int>> for isize {
     fn from(oref: Gc<Int>) -> isize { unsafe { oref.as_ref().0 } }
 }
 
-impl From<Root<Int>> for isize {
-    fn from(hdl: Root<Int>) -> isize { unsafe { hdl.as_ref().0 } }
+impl From<Handle<Int>> for isize {
+    fn from(hdl: Handle<Int>) -> isize { unsafe { hdl.as_ref().0 } }
 }
 
 #[cfg(test)]

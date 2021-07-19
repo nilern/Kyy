@@ -3,7 +3,7 @@ use std::mem::{align_of, transmute};
 use std::slice;
 use std::str;
 
-use super::orefs::Root;
+use super::orefs::Handle;
 use super::mutator::{KyyMutator, KyyType};
 use super::object::Object;
 
@@ -11,10 +11,10 @@ use super::object::Object;
 pub struct String;
 
 impl String {
-    pub fn new(km: &mut KyyMutator, cs: &str) -> Root<String> {
+    pub fn new(km: &mut KyyMutator, cs: &str) -> Handle<String> {
         unsafe {
-            let root: Root<Object> = km.alloc_bytes(Self::reify(km), cs.len(), align_of::<u8>());
-            let root: Root<Self> = root.unchecked_cast();
+            let root: Handle<Object> = km.alloc_bytes(Self::reify(km), cs.len(), align_of::<u8>());
+            let root: Handle<Self> = root.unchecked_cast();
             let contents: &mut [u8] = slice::from_raw_parts_mut(
                 root.as_mut_ptr() as *mut u8, cs.len());
             contents.copy_from_slice(cs.as_bytes());
@@ -23,11 +23,11 @@ impl String {
     }
 }
 
-impl Debug for Root<String> {
+impl Debug for Handle<String> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result { unsafe { self.as_str() }.fmt(f) }
 }
 
-impl Root<String> {
+impl Handle<String> {
     pub fn len(self) -> usize { unsafe { self.as_ref().header().raw_size() } }
 
     /// Safety: the returned slice must not be live across a safepoint
