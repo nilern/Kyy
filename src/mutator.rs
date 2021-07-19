@@ -314,7 +314,7 @@ impl KyyMutator {
         let builtin_types: &mut [ObjectPtr<Type>] = slice::from_raw_parts_mut(
             transmute(&mut self.types), GSize::of::<BuiltinTypes>().into());
         for typ in builtin_types.iter_mut() {
-            *typ = typ.mark(&mut self.heap);
+            *typ = self.heap.mark_root((*typ).into()).unchecked_cast()
         }
 
         self.heap.gc();

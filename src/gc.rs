@@ -10,7 +10,7 @@ use super::granule::{Granule, GSize};
 // TODO: Python None = ptr::null?
 
 impl<T> ObjectPtr<T> {
-    pub unsafe fn mark(mut self, heap: &mut Heap) -> ObjectPtr<T> {
+    unsafe fn mark(mut self, heap: &mut Heap) -> ObjectPtr<T> {
         match self.header().forwarded() {
             Some(res) => res,
             None => {
