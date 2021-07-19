@@ -10,17 +10,11 @@ use super::int::Int;
 use super::bool::Bool;
 use super::tuple::Tuple;
 use super::string::String;
+use super::typ::Type;
 use super::ast;
 
 // FIXME: If the various `new` methods here and in e.g. super::ast do a GC,
 // they do not consider the passed-in contents of the new object as roots
-
-// ---
-
-#[repr(C)]
-pub struct Type {
-    bases: ObjectPtr<Tuple>
-}
 
 // ---
 

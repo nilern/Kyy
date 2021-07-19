@@ -3,6 +3,7 @@ mod granule;
 mod gc;
 mod handle;
 mod mutator;
+mod typ;
 mod object;
 mod int;
 mod bool;
