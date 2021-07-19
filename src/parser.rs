@@ -4,7 +4,7 @@ use super::lexer::{self, Token, TokenTag, KyyLexer, Located};
 use super::ast::*;
 use super::mutator::KyyMutator;
 use super::handle::Handle;
-use super::orefs::Gc;
+use super::orefs::ObjectPtr;
 use super::object::Object;
 use super::tuple::Tuple;
 use super::string::String;
@@ -202,7 +202,7 @@ fn block<'a>(km: &mut KyyMutator, tokens: &mut KyyLexer<'a>) -> ParseResult<'a, 
 
     token(tokens, TokenTag::Dedent)?;
 
-    let stmts: Vec<Gc<Object>> = stmts.iter()
+    let stmts: Vec<ObjectPtr<Object>> = stmts.iter()
         .map(|stmt| unsafe { stmt.oref() }.as_obj() )
         .collect();
     Ok(Tuple::new(km, &stmts))

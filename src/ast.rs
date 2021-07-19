@@ -4,7 +4,7 @@ use std::ops::Range;
 use super::handle::Handle;
 use super::lexer::Spanning;
 use super::object::Object;
-use super::orefs::Gc;
+use super::orefs::ObjectPtr;
 use super::mutator::{KyySizedSlotsType, KyyMutator};
 use super::string::String;
 use super::tuple::Tuple;
@@ -14,9 +14,9 @@ use super::int::Int;
 
 #[repr(C)]
 pub struct Expr {
-    filename: Gc<String>,
-    start: Gc<Int>,
-    end: Gc<Int>
+    filename: ObjectPtr<String>,
+    start: ObjectPtr<Int>,
+    end: ObjectPtr<Int>
 }
 
 impl Expr {
@@ -51,8 +51,8 @@ macro_rules! binary_node {
         #[repr(C)]
         pub struct $name {
             base: Expr,
-            left: Gc<Expr>,
-            right: Gc<Expr>
+            left: ObjectPtr<Expr>,
+            right: ObjectPtr<Expr>
         }
 
         unsafe impl KyySizedSlotsType for $name {}
@@ -97,7 +97,7 @@ binary_node!(Ge);
 #[repr(C)]
 pub struct Var {
     base: Expr,
-    name: Gc<String>
+    name: ObjectPtr<String>
 }
 
 unsafe impl KyySizedSlotsType for Var {}
@@ -125,7 +125,7 @@ impl Handle<Var> {
 #[repr(C)]
 pub struct Const {
     base: Expr,
-    value: Gc<Object>
+    value: ObjectPtr<Object>
 }
 
 unsafe impl KyySizedSlotsType for Const {}
@@ -152,9 +152,9 @@ impl Handle<Const> {
 
 #[repr(C)]
 pub struct Stmt {
-    filename: Gc<String>,
-    start: Gc<Int>,
-    end: Gc<Int>
+    filename: ObjectPtr<String>,
+    start: ObjectPtr<Int>,
+    end: ObjectPtr<Int>
 }
 
 impl Stmt {
@@ -178,7 +178,7 @@ impl Handle<Stmt> {
 #[repr(C)]
 pub struct ExprStmt {
     base: Stmt,
-    expr: Gc<Expr>
+    expr: ObjectPtr<Expr>
 }
 
 unsafe impl KyySizedSlotsType for ExprStmt {}
@@ -208,9 +208,9 @@ impl Handle<ExprStmt> {
 #[repr(C)]
 pub struct If {
     base: Stmt,
-    condition: Gc<Expr>,
-    conseq: Gc<Tuple>,
-    alt: Gc<Tuple>
+    condition: ObjectPtr<Expr>,
+    conseq: ObjectPtr<Tuple>,
+    alt: ObjectPtr<Tuple>
 }
 
 unsafe impl KyySizedSlotsType for If {}
@@ -246,8 +246,8 @@ impl Handle<If> {
 #[repr(C)]
 pub struct Assign {
     base: Stmt,
-    left: Gc<String>,
-    right: Gc<Expr>,
+    left: ObjectPtr<String>,
+    right: ObjectPtr<Expr>,
 }
 
 unsafe impl KyySizedSlotsType for Assign {}

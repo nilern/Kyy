@@ -1,5 +1,5 @@
 use super::handle::Handle;
-use super::orefs::Gc;
+use super::orefs::ObjectPtr;
 use super::mutator::{KyySizedBytesType, KyyMutator};
 
 #[repr(C)]
@@ -11,8 +11,8 @@ impl Int {
     pub fn new(km: &mut KyyMutator, n: isize) -> Handle<Int> { Self::alloc(km, Int(n)) }
 }
 
-impl From<Gc<Int>> for isize {
-    fn from(oref: Gc<Int>) -> isize { unsafe { oref.as_ref().0 } }
+impl From<ObjectPtr<Int>> for isize {
+    fn from(oref: ObjectPtr<Int>) -> isize { unsafe { oref.as_ref().0 } }
 }
 
 impl From<Handle<Int>> for isize {
