@@ -1,3 +1,6 @@
+mod object;
+mod typ;
+mod orefs;
 mod lexer;
 mod parser;
 mod eval;
