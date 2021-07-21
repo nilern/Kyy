@@ -5,6 +5,7 @@ use std::ptr;
 
 use super::orefs::{ObjectPtr, ObjectRef};
 use super::object::Object;
+use super::typ::Type;
 use super::granule::{Granule, GSize};
 
 // TODO: Python None = ptr::null?
@@ -37,6 +38,63 @@ impl ObjectRef {
     }
 }
 
+// ---
+
+#[derive(Debug)]
+struct Length(usize);
+
+impl Length {
+    const SHIFT: usize = 1;
+
+    const TAG: usize = 1;
+
+    const MAX: usize = (1 << (size_of::<usize>() * 8 - Self::SHIFT)) - 1;
+}
+
+impl TryFrom<usize> for Length {
+    type Error = ();
+
+    fn try_from(len: usize) -> Result<Length, Self::Error> {
+        if len <= Self::MAX {
+            Ok(Length((len << Self::SHIFT) | Self::TAG))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl From<Length> for usize {
+    fn from(len: Length) -> usize { len.0 >> Length::SHIFT }
+}
+
+// ---
+
+struct Hdr(usize);
+
+impl Hdr {
+    const MARK_BIT: usize = 0b10;
+
+    const SHIFT: usize = 2;
+    const MASK: usize = (1 << Self::SHIFT) - 1;
+
+    fn new(class: ObjectPtr<Type>) -> Self { Self(class.as_ptr() as usize) }
+
+    unsafe fn class(&self) -> ObjectPtr<Type> { ObjectPtr::from_raw(self.0 as *mut Type) }
+
+    fn forwarding<T>(dest: ObjectPtr<T>) -> Self { Self(dest.as_ptr() as usize | Self::MARK_BIT) }
+
+    fn forwarded<T>(&self) -> Option<ObjectPtr<T>> {
+        if (self.0 & Self::MARK_BIT) == Self::MARK_BIT {
+            Some(ObjectPtr::from_raw((self.0 & !Self::MASK) as *mut T))
+        } else {
+            None
+        }
+    }
+
+    unsafe fn forward<T>(&mut self, dest: ObjectPtr<T>) {
+        *self = Self::forwarding(dest);
+    }
+}
 
 // ---
 

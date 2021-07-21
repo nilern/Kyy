@@ -174,6 +174,7 @@ impl KyyMutator {
             let mut bool_typ: ObjectPtr<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
             bool_typ.as_mut_ptr().write(Type {bases: obj_bases});
+
             let mut string_typ: ObjectPtr<Type> = heap.alloc_slots(type_typ.into(), size_of::<Type>())?
                 .unchecked_cast();
             string_typ.as_mut_ptr().write(Type {bases: obj_bases});

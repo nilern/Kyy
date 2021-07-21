@@ -29,6 +29,9 @@ impl<T> ObjectPtr<T> {
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
     /// Safety: The returned pointer must not be live across a safepoint.
+    pub unsafe fn as_ptr(&self) -> *const T { self.0.as_ptr() as _ }
+
+    /// Safety: The returned pointer must not be live across a safepoint.
     pub unsafe fn as_mut_ptr(&mut self) -> *mut T { self.0.as_mut() as _ }
 
     /// Safety: The returned reference must not be live across a safepoint.

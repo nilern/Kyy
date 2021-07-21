@@ -1,0 +1,119 @@
+@startuml
+map True {
+}
+map False {
+}
+map object {
+}
+map type {
+}
+map int {
+}
+map bool {
+}
+map tuple {
+}
+
+map True {
+    class *--> bool
+    value => true
+}
+map False {
+    class *--> bool
+    value => false
+}
+
+map object.size {
+    class *--> int
+    value => 0
+}
+map object.align {
+    class *--> int
+    value => 8
+}
+map empty_bases {
+    class *--> tuple
+    values => ()
+}
+map object {
+    class *--> type
+    is_bytes *--> False
+    is_indexed *--> False
+    size *--> object.size
+    align *--> object.align
+    bases *--> empty_bases
+}
+
+map type.size {
+    class *--> int
+    value => 40
+}
+map type.align {
+    class *--> int
+    value => 8
+}
+map obj_bases {
+    class *--> tuple
+    values[0] *--> object
+}
+map type {
+    class *--> type
+    is_bytes *--> False
+    is_indexed *--> False
+    size *--> type.size
+    align *--> type.align
+    bases *--> obj_bases
+}
+
+map int.size {
+    class *--> int
+    value => 8
+}
+map int.align {
+    class *--> int
+    value => 8
+}
+map int {
+    class *--> type
+    is_bytes *--> True
+    is_indexed *--> False
+    size *--> int.size
+    align *--> int.align
+    bases *--> obj_bases
+}
+
+map bool.size {
+    class *--> bool
+    value => 1
+}
+map bool.align {
+    class *--> bool
+    value => 1
+}
+map bool {
+    class *--> type
+    is_bytes *--> True
+    is_indexed *--> False
+    size *--> bool.size
+    align *--> bool.align
+    bases *--> obj_bases
+}
+
+map tuple.size {
+    class *--> tuple
+    value => 0
+}
+map tuple.align {
+    class *--> tuple
+    value => 8
+}
+map tuple {
+    class *--> type
+    is_bytes *--> False
+    is_indexed *--> True
+    size *--> tuple.size
+    align *--> tuple.align
+    bases *--> obj_bases
+}
+@enduml
+
